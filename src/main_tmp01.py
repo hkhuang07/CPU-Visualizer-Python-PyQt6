@@ -1,0 +1,551 @@
+import sys
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,
+    QGraphicsScene, QComboBox, QLineEdit, QFormLayout, QMessageBox, QGraphicsRectItem
+)
+from PyQt6.QtGui import QPixmap, QColor, QPen, QFont, QBrush
+from PyQt6.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QRectF
+
+from .cpu_core import CPU
+
+# Định nghĩa TỌA ĐỘ cho các thành phần trên sơ đồ (BẠN CẦN THAY ĐỔI THEO HÌNH CỦA BẠN!)
+# Các tọa độ này là giả định, bạn phải thay đổi chúng dựa trên file ảnh của bạn.
+# Nên có khoảng cách đủ lớn giữa các thành phần để đặt giá trị
+DIAGRAM_COORDS = {
+    'IAR_TEXT_POS': QPointF(50, 60), # Vị trí chữ số của IAR (Program Counter)
+    'IR_OPCODE_TEXT_POS': QPointF(200, 60), # Vị trí chữ số Opcode trong IR
+    'IR_ADDRDATA_TEXT_POS': QPointF(270, 60), # Vị trí chữ số Addr/Data trong IR
+    'REG_A_TEXT_POS': QPointF(100, 200), # Vị trí chữ số Register A
+    'REG_B_TEXT_POS': QPointF(100, 250), # Vị trí chữ số Register B
+    'ALU_OUT_TEXT_POS': QPointF(250, 300), # Vị trí kết quả đầu ra của ALU (ví dụ tạm)
+    'FLAG_Z_POS': QPointF(400, 50), # Vị trí cờ Z
+    'FLAG_N_POS': QPointF(430, 50), # Vị trí cờ N
+    'FLAG_O_POS': QPointF(460, 50), # Vị trí cờ O
+
+    # Vị trí các ô RAM (ví dụ cho 3 ô đầu tiên, bạn cần mở rộng cho 16 ô)
+    # Đây là nơi giá trị RAM sẽ hiển thị trực tiếp trên sơ đồ
+    'RAM_CELL_POSITIONS': {
+        0: QPointF(700, 100),
+        1: QPointF(700, 120),
+        2: QPointF(700, 140),
+        # ... thêm các địa chỉ khác
+    },
+
+    # Vùng cho các hình chữ nhật bao quanh để highlight
+    'IAR_RECT': QRectF(40, 50, 60, 30), # (x, y, width, height)
+    'IR_RECT': QRectF(190, 50, 120, 30),
+    'REG_A_RECT': QRectF(90, 190, 70, 30),
+    'REG_B_RECT': QRectF(90, 240, 70, 30),
+    'ALU_RECT': QRectF(180, 280, 150, 80), # Ví dụ vùng ALU
+    'CONTROL_UNIT_RECT': QRectF(350, 100, 100, 100), # Ví dụ vùng Control Unit
+
+    # Đường dây tín hiệu (sẽ dùng cho animation sau)
+    # Ví dụ: đường từ RAM đến IR
+    'PATH_RAM_TO_IR': [QPointF(650, 120), QPointF(320, 70)],
+    # ... và nhiều đường khác
+}
+
+
+class CPUVisualizerApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("CPU Execution Visualizer")
+        self.setGeometry(100, 100, 1400, 800) # Tăng kích thước cửa sổ
+
+        self.cpu = CPU() 
+
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.main_layout = QHBoxLayout(self.central_widget) 
+
+        # Dictionary để lưu trữ các QGraphicsTextItem hiển thị giá trị trên sơ đồ
+        self.diagram_text_items = {}
+        # Dictionary để lưu trữ các QGraphicsRectItem để highlight vùng
+        self.diagram_rect_highlights = {}
+        
+        self.init_ui()
+        self.update_gui_cpu_status() # Cập nhật trạng thái GUI lần đầu
+
+    def init_ui(self):
+        # ... (Phần setup left_panel và right_panel giống như trước) ...
+        self.left_panel = QVBoxLayout()
+        self.main_layout.addLayout(self.left_panel, 1) # Chiếm 1 phần (ví dụ 1/3)
+
+        self.right_panel = QVBoxLayout()
+        self.main_layout.addLayout(self.right_panel, 2) # Chiếm 2 phần (ví dụ 2/3)
+
+        # --- Right Panel: CPU Diagram ---
+        self.scene = QGraphicsScene()
+        self.view = QGraphicsView(self.scene)
+        self.right_panel.addWidget(self.view)
+
+        try:
+            self.cpu_diagram_pixmap = QPixmap("assets/image_212fe2.jpg")
+            if self.cpu_diagram_pixmap.isNull():
+                QMessageBox.critical(self, "Lỗi tải ảnh", "Không thể tải ảnh sơ đồ CPU. Kiểm tra đường dẫn 'assets/image_212fe2.jpg'.")
+                # Fallback to a gray rectangle if image fails to load
+                self.scene.addRect(0, 0, 800, 400, QPen(QColor("red")), QColor("lightgray"))
+            else:
+                self.scene.addPixmap(self.cpu_diagram_pixmap)
+                self.scene.setSceneRect(self.cpu_diagram_pixmap.rect())
+                self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi tải ảnh", f"Xảy ra lỗi khi tải ảnh: {e}")
+            self.scene.addRect(0, 0, 800, 400, QPen(QColor("red")), QColor("lightgray")) # Fallback
+
+        # --- Thêm các thành phần hiển thị trên SƠ ĐỒ CPU ---
+        self.setup_diagram_elements()
+        
+        # --- Left Panel: Controls and Data --- (Giữ nguyên như trước)
+        # 1. Control Buttons (Run, Step, Reset)
+        self.control_buttons_layout = QHBoxLayout()
+        self.run_button = QPushButton("Run")
+        self.step_button = QPushButton("Step")
+        self.reset_button = QPushButton("Reset")
+
+        self.control_buttons_layout.addWidget(self.run_button)
+        self.control_buttons_layout.addWidget(self.step_button)
+        self.control_buttons_layout.addWidget(self.reset_button)
+        self.left_panel.addLayout(self.control_buttons_layout)
+
+        self.run_button.clicked.connect(self.run_cpu)
+        self.step_button.clicked.connect(self.step_cpu)
+        self.reset_button.clicked.connect(self.reset_cpu)
+
+        # 2. RAM Table
+        self.ram_group_box = QWidget()
+        self.ram_group_box_layout = QVBoxLayout(self.ram_group_box)
+        self.left_panel.addWidget(self.ram_group_box)
+        
+        self.ram_table = QTableWidget(16, 2)
+        self.ram_table.setHorizontalHeaderLabels(["Address", "Data (8-bit)"])
+        for i in range(16):
+            self.ram_table.setItem(i, 0, QTableWidgetItem(str(i)))
+            self.ram_table.setItem(i, 1, QTableWidgetItem("00000000"))
+        self.ram_table.setColumnWidth(0, 50)
+        self.ram_table.setColumnWidth(1, 90)
+        self.ram_table.verticalHeader().setVisible(False)
+        self.ram_group_box_layout.addWidget(QLabel("RAM (Instruction/Data)"))
+        self.ram_group_box_layout.addWidget(self.ram_table)
+
+        # 3. Instruction Loader
+        self.instr_loader_layout = QFormLayout()
+        self.left_panel.addLayout(self.instr_loader_layout)
+
+        self.instr_address_input = QLineEdit("0")
+        self.instr_address_input.setPlaceholderText("0-15")
+        self.instr_address_input.setFixedWidth(50)
+
+        self.opcode_combo = QComboBox()
+        for opcode_bits, info in self.cpu.opcode_map.items():
+            self.opcode_combo.addItem(f"{info['name']} ({opcode_bits})", opcode_bits)
+        
+        self.operand_input = QLineEdit("0000")
+        self.operand_input.setPlaceholderText("4-bit binary (e.g., 0101)")
+        self.operand_input.setFixedWidth(80)
+
+        self.load_instr_button = QPushButton("Load Instruction to RAM")
+        self.load_instr_button.clicked.connect(self.load_instruction_gui)
+
+        self.instr_loader_layout.addRow(QLabel("Địa chỉ RAM:"), self.instr_address_input)
+        self.instr_loader_layout.addRow(QLabel("Opcode:"), self.opcode_combo)
+        self.instr_loader_layout.addRow(QLabel("Operand/Addr:"), self.operand_input)
+        self.instr_loader_layout.addRow(self.load_instr_button)
+        
+        # 4. Register & Flag Display (trên bảng điều khiển bên trái)
+        self.register_display_labels = {}
+        self.flags_display_labels = {}
+        self.setup_register_and_flag_display()
+
+        # Timer cho chế độ Run
+        self.run_timer = QTimer(self)
+        self.run_timer.setInterval(500) 
+        self.run_timer.timeout.connect(self.step_cpu)
+
+    def setup_diagram_elements(self):
+        """Thiết lập các QGraphicsItem để hiển thị giá trị và highlight trên sơ đồ CPU."""
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+
+        # IAR (Program Counter)
+        self.diagram_text_items['IAR'] = self.scene.addText("IAR: 0", font)
+        self.diagram_text_items['IAR'].setPos(DIAGRAM_COORDS['IAR_TEXT_POS'])
+        self.diagram_rect_highlights['IAR'] = self.scene.addRect(DIAGRAM_COORDS['IAR_RECT'], QPen(Qt.GlobalColor.transparent), QBrush(Qt.GlobalColor.transparent))
+
+        # IR (Instruction Register) - Opcode and Addr/Data parts
+        self.diagram_text_items['IR_Opcode'] = self.scene.addText("Op:0000", font)
+        self.diagram_text_items['IR_Opcode'].setPos(DIAGRAM_COORDS['IR_OPCODE_TEXT_POS'])
+        self.diagram_text_items['IR_AddrData'] = self.scene.addText("Ad:0000", font)
+        self.diagram_text_items['IR_AddrData'].setPos(DIAGRAM_COORDS['IR_ADDRDATA_TEXT_POS'])
+        self.diagram_rect_highlights['IR'] = self.scene.addRect(DIAGRAM_COORDS['IR_RECT'], QPen(Qt.GlobalColor.transparent), QBrush(Qt.GlobalColor.transparent))
+
+
+        # Registers A & B
+        self.diagram_text_items['A'] = self.scene.addText("A: 0 (00)", font)
+        self.diagram_text_items['A'].setPos(DIAGRAM_COORDS['REG_A_TEXT_POS'])
+        self.diagram_rect_highlights['A'] = self.scene.addRect(DIAGRAM_COORDS['REG_A_RECT'], QPen(Qt.GlobalColor.transparent), QBrush(Qt.GlobalColor.transparent))
+
+        self.diagram_text_items['B'] = self.scene.addText("B: 0 (00)", font)
+        self.diagram_text_items['B'].setPos(DIAGRAM_COORDS['REG_B_TEXT_POS'])
+        self.diagram_rect_highlights['B'] = self.scene.addRect(DIAGRAM_COORDS['REG_B_RECT'], QPen(Qt.GlobalColor.transparent), QBrush(Qt.GlobalColor.transparent))
+
+        # Flags (Z, N, O)
+        self.diagram_text_items['Z_flag'] = self.scene.addText("Z: F", font)
+        self.diagram_text_items['Z_flag'].setPos(DIAGRAM_COORDS['FLAG_Z_POS'])
+        self.diagram_text_items['N_flag'] = self.scene.addText("N: F", font)
+        self.diagram_text_items['N_flag'].setPos(DIAGRAM_COORDS['FLAG_N_POS'])
+        self.diagram_text_items['O_flag'] = self.scene.addText("O: F", font)
+        self.diagram_text_items['O_flag'].setPos(DIAGRAM_COORDS['FLAG_O_POS'])
+
+        # RAM Cells on Diagram
+        self.diagram_ram_cells = {} # Lưu trữ QGraphicsTextItem cho mỗi ô RAM trên sơ đồ
+        for i in range(16):
+            if i in DIAGRAM_COORDS['RAM_CELL_POSITIONS']:
+                text_item = self.scene.addText(f"RAM[{i}]: 00000000", QFont("Arial", 8))
+                text_item.setPos(DIAGRAM_COORDS['RAM_CELL_POSITIONS'][i])
+                self.diagram_ram_cells[i] = text_item
+
+        # Highlight for ALU (will be activated during ADD/SUB)
+        self.diagram_rect_highlights['ALU'] = self.scene.addRect(DIAGRAM_COORDS['ALU_RECT'], QPen(Qt.GlobalColor.transparent), QBrush(Qt.GlobalColor.transparent))
+        # Highlight for Control Unit (will be activated during Decode/Execute phases)
+        self.diagram_rect_highlights['CONTROL_UNIT'] = self.scene.addRect(DIAGRAM_COORDS['CONTROL_UNIT_RECT'], QPen(Qt.GlobalColor.transparent), QBrush(Qt.GlobalColor.transparent))
+
+
+    def update_gui_cpu_status(self):
+        """Cập nhật các giá trị của RAM, Registers, và Flags lên GUI (cả bảng và sơ đồ)."""
+        # 1. Update RAM Table (bên trái)
+        for i in range(16):
+            self.ram_table.setItem(i, 1, QTableWidgetItem(self.cpu.ram[i]))
+            # Cập nhật RAM cells trên sơ đồ
+            if i in self.diagram_ram_cells:
+                self.diagram_ram_cells[i].setPlainText(f"RAM[{i}]: {self.cpu.ram[i]}")
+
+        # 2. Update Register Labels (bên trái)
+        self.register_display_labels['A'].setText(f"Reg A: {self.cpu.registers['A']} ({self.cpu.registers['A']:08b})")
+        self.register_display_labels['B'].setText(f"Reg B: {self.cpu.registers['B']} ({self.cpu.registers['B']:08b})")
+        self.register_display_labels['IAR'].setText(f"IAR: {self.cpu.registers['IAR']} ({self.cpu.registers['IAR']:04b})")
+        self.register_display_labels['IR_Opcode'].setText(f"IR (Opcode): {self.cpu.registers['IR_Opcode']}")
+        self.register_display_labels['IR_AddrData'].setText(f"IR (Addr/Data): {self.cpu.registers['IR_AddrData']}")
+
+        # 3. Update Register/IR/IAR Labels ON DIAGRAM
+        self.diagram_text_items['IAR'].setPlainText(f"IAR: {self.cpu.registers['IAR']:04b}") # IAR display as 4-bit binary
+        self.diagram_text_items['IR_Opcode'].setPlainText(f"Op:{self.cpu.registers['IR_Opcode']}")
+        self.diagram_text_items['IR_AddrData'].setPlainText(f"Ad:{self.cpu.registers['IR_AddrData']}")
+        self.diagram_text_items['A'].setPlainText(f"A: {self.cpu.registers['A']:08b}") # Reg A display as 8-bit binary
+        self.diagram_text_items['B'].setPlainText(f"B: {self.cpu.registers['B']:08b}") # Reg B display as 8-bit binary
+
+        # 4. Update Flag Labels (bên trái và trên sơ đồ)
+        z_flag_status = 'T' if self.cpu.flags['Z'] else 'F'
+        n_flag_status = 'T' if self.cpu.flags['N'] else 'F'
+        o_flag_status = 'T' if self.cpu.flags['O'] else 'F'
+
+        self.flags_display_labels['Z'].setText(f"Z: {z_flag_status}")
+        self.flags_display_labels['N'].setText(f"N: {n_flag_status}")
+        self.flags_display_labels['O'].setText(f"O: {o_flag_status}")
+
+        self.diagram_text_items['Z_flag'].setPlainText(f"Z: {z_flag_status}")
+        self.diagram_text_items['N_flag'].setPlainText(f"N: {n_flag_status}")
+        self.diagram_text_items['O_flag'].setPlainText(f"O: {o_flag_status}")
+
+        # Reset tất cả các highlight
+        for rect_item in self.diagram_rect_highlights.values():
+            rect_item.setPen(QPen(Qt.GlobalColor.transparent))
+            rect_item.setBrush(QBrush(Qt.GlobalColor.transparent))
+
+    # ... (Các hàm load_instruction_gui, step_cpu, run_cpu, reset_cpu giữ nguyên,
+    #      nhưng step_cpu và reset_cpu sẽ cần gọi thêm hàm reset_highlights) ...
+
+    def reset_cpu(self):
+        """Đặt lại trạng thái CPU và GUI."""
+        self.run_timer.stop()
+        self.cpu.reset()
+        self.update_gui_cpu_status()
+        self.run_button.setEnabled(True)
+        self.step_button.setEnabled(True)
+        QMessageBox.information(self, "Reset CPU", "CPU đã được đặt lại trạng thái ban đầu.")
+        # Thêm việc reset highlight khi reset CPU
+        for rect_item in self.diagram_rect_highlights.values():
+            rect_item.setPen(QPen(Qt.GlobalColor.transparent))
+            rect_item.setBrush(QBrush(Qt.GlobalColor.transparent))
+
+
+    def highlight_component(self, component_key, color=Qt.GlobalColor.yellow):
+        """Hàm dùng để highlight một thành phần trên sơ đồ."""
+        if component_key in self.diagram_rect_highlights:
+            self.diagram_rect_highlights[component_key].setPen(QPen(color, 2))
+            self.diagram_rect_highlights[component_key].setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 50))) # Màu nền trong suốt
+            
+            # Tự động tắt highlight sau một khoảng thời gian ngắn
+            QTimer.singleShot(200, lambda: self.reset_highlight(component_key))
+
+    def reset_highlight(self, component_key):
+        """Đặt lại highlight của một thành phần."""
+        if component_key in self.diagram_rect_highlights:
+            self.diagram_rect_highlights[component_key].setPen(QPen(Qt.GlobalColor.transparent))
+            self.diagram_rect_highlights[component_key].setBrush(QBrush(Qt.GlobalColor.transparent))
+# Định nghĩa CÁC ĐƯỜNG DÂY TÍN HIỆU (Các điểm QPointF tạo thành đường)
+# CÁC TỌA ĐỘ NÀY LÀ VÍ DỤ! BẠN PHẢI THAY THẾ BẰNG TỌA ĐỘ TỪ SƠ ĐỒ CỦA BẠN.
+SIGNAL_PATHS = {
+    # Fetch Phase
+    'IAR_TO_RAM_ADDR_BUS': [QPointF(60, 70), QPointF(500, 70), QPointF(500, 100), QPointF(650, 100)], # IAR -> Address Bus -> RAM
+    'RAM_DATA_TO_IR': [QPointF(750, 150), QPointF(550, 150), QPointF(550, 70), QPointF(320, 70)], # RAM Data Out -> Data Bus -> IR
+    
+    # Decode Phase
+    'IR_TO_CONTROL_UNIT': [QPointF(250, 80), QPointF(250, 150), QPointF(370, 150)], # IR -> Control Unit
+    
+    # Execute Phase - LOAD (A/B)
+    'RAM_DATA_TO_REG_A': [QPointF(750, 150), QPointF(550, 150), QPointF(550, 200), QPointF(180, 200)], # RAM Data Out -> Data Bus -> Reg A
+    'RAM_DATA_TO_REG_B': [QPointF(750, 150), QPointF(550, 150), QPointF(550, 250), QPointF(180, 250)], # RAM Data Out -> Data Bus -> Reg B
+
+    # Execute Phase - STORE (A/B)
+    'REG_A_TO_RAM_DATA_BUS': [QPointF(180, 200), QPointF(550, 200), QPointF(550, 150), QPointF(750, 150)], # Reg A -> Data Bus -> RAM
+    'REG_B_TO_RAM_DATA_BUS': [QPointF(180, 250), QPointF(550, 250), QPointF(550, 150), QPointF(750, 150)], # Reg B -> Data Bus -> RAM
+
+    # Execute Phase - ALU Operations (ADD/SUB)
+    'REG_A_TO_ALU': [QPointF(170, 200), QPointF(200, 200), QPointF(200, 280)], # Reg A -> ALU Input
+    'REG_B_TO_ALU': [QPointF(170, 250), QPointF(200, 250), QPointF(200, 280)], # Reg B -> ALU Input
+    'ALU_TO_REG_A': [QPointF(250, 350), QPointF(250, 200), QPointF(170, 200)], # ALU Output -> Reg A
+
+    # Execute Phase - JUMP (update IAR)
+    'ADDR_TO_IAR_JUMP': [QPointF(290, 70), QPointF(290, 40), QPointF(70, 40), QPointF(70, 60)] # IR Addr -> IAR
+}
+class CPUVisualizerApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        # ... (khởi tạo window, cpu) ...
+        self.cpu = CPU()
+        self.signal_animator = SignalAnimator(self.scene) # Khởi tạo animator
+        
+        # ... (khởi tạo GUI) ...
+        
+        self.cpu_current_phase = 'IDLE' # Trạng thái hiện tại của CPU cycle (IDLE, FETCH, DECODE, EXECUTE)
+        self.cpu_phase_timer = QTimer(self) # Timer để điều khiển các pha
+        self.cpu_phase_timer.setInterval(200) # Thời gian giữa các bước/pha (có thể điều chỉnh)
+        self.cpu_phase_timer.timeout.connect(self._advance_cpu_phase) # Kết nối tới hàm xử lý pha
+
+        self.animation_step_duration = 500 # Thời gian cho mỗi hoạt ảnh tín hiệu
+
+    # ... (các hàm init_ui, setup_diagram_elements, setup_register_and_flag_display, update_gui_cpu_status, load_instruction_gui) ...
+
+    def _clear_all_highlights_and_animations(self):
+        """Xóa tất cả highlights và dừng/dọn dẹp animations."""
+        for rect_item in self.diagram_rect_highlights.values():
+            rect_item.setPen(QPen(Qt.GlobalColor.transparent))
+            rect_item.setBrush(QBrush(Qt.GlobalColor.transparent))
+        
+        # Đảm bảo tất cả animations cũ được dừng và dọn dẹp
+        for anim in self.signal_animator.active_animations[:]: # Lặp trên bản sao để tránh lỗi khi sửa đổi list
+            anim.stop()
+            # _cleanup_animation sẽ được gọi qua signal, nhưng đảm bảo mọi thứ sạch sẽ
+            if anim.targetObject(): # Kiểm tra targetObject có tồn tại không
+                 self.scene.removeItem(anim.targetObject())
+            anim.deleteLater()
+        self.signal_animator.active_animations.clear()
+
+
+    def highlight_component(self, component_key, color=Qt.GlobalColor.yellow, duration=200):
+        """Hàm dùng để highlight một thành phần trên sơ đồ và tự động tắt."""
+        if component_key in self.diagram_rect_highlights:
+            rect_item = self.diagram_rect_highlights[component_key]
+            original_pen = rect_item.pen()
+            original_brush = rect_item.brush()
+
+            rect_item.setPen(QPen(color, 2))
+            rect_item.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 50)))
+
+            # Dùng QTimer để tắt highlight sau một khoảng thời gian
+            QTimer.singleShot(duration, lambda: self._reset_single_highlight(component_key, original_pen, original_brush))
+
+    def _reset_single_highlight(self, component_key, original_pen, original_brush):
+        if component_key in self.diagram_rect_highlights:
+            self.diagram_rect_highlights[component_key].setPen(original_pen)
+            self.diagram_rect_highlights[component_key].setBrush(original_brush)
+
+
+    def _animate_signal(self, path_name, color=Qt.GlobalColor.red):
+        """Gọi SignalAnimator để chạy hoạt ảnh trên đường dây."""
+        if path_name in SIGNAL_PATHS:
+            self.signal_animator.animate_path(SIGNAL_PATHS[path_name], color, duration=self.animation_step_duration)
+        else:
+            print(f"Lỗi: Đường dẫn tín hiệu '{path_name}' không được định nghĩa.")
+
+
+    def step_cpu(self):
+        """Kích hoạt chu kỳ CPU từng bước (kiểm soát pha)."""
+        if self.cpu.is_halted:
+            self.run_timer.stop()
+            QMessageBox.information(self, "CPU Halted", "CPU đã dừng thực thi.")
+            self.cpu_current_phase = 'IDLE' # Đặt lại pha
+            return
+
+        # Dọn dẹp highlight và animation cũ trước khi bắt đầu pha mới
+        self._clear_all_highlights_and_animations()
+
+        # Bắt đầu chu kỳ pha, hoặc tiếp tục nếu đang ở giữa
+        if self.cpu_current_phase == 'IDLE':
+            self.cpu_current_phase = 'FETCH'
+        
+        # Dừng run_timer và bắt đầu cpu_phase_timer để điều khiển từng pha
+        self.run_timer.stop() 
+        self.cpu_phase_timer.start() # Bắt đầu timer cho các pha
+
+        self.run_button.setEnabled(False) # Tạm thời vô hiệu hóa các nút điều khiển chính
+        self.step_button.setEnabled(False)
+
+
+    def _advance_cpu_phase(self):
+        """Tiến lên một pha trong chu kỳ CPU."""
+        if self.cpu.is_halted:
+            self.cpu_phase_timer.stop()
+            self.cpu_current_phase = 'IDLE'
+            self.run_button.setEnabled(True)
+            self.step_button.setEnabled(True)
+            return
+
+        if self.cpu_current_phase == 'FETCH':
+            print("--- PHASE: FETCH ---")
+            self.highlight_component('IAR', Qt.GlobalColor.red)
+            self._animate_signal('IAR_TO_RAM_ADDR_BUS', Qt.GlobalColor.red)
+            
+            # Sau khi animation IAR_TO_RAM_ADDR_BUS kết thúc, tiếp tục pha
+            # Để thực sự đợi animation, chúng ta sẽ kết nối signal animation_finished
+            # Tuy nhiên, để đơn giản hóa cho hướng dẫn, chúng ta sẽ dùng timer
+            # và giả định animation đủ nhanh để chuyển pha.
+            self.cpu_phase_timer.setInterval(self.animation_step_duration + 50) # Đợi animation xong
+            self.cpu.fetch_instruction() # Thực hiện logic fetch
+            self.update_gui_cpu_status() # Cập nhật GUI ngay lập tức sau logic
+            
+            # Animation phản hồi từ RAM đến IR (sau khi fetch)
+            self.highlight_component('IR', Qt.GlobalColor.red)
+            self._animate_signal('RAM_DATA_TO_IR', Qt.GlobalColor.green)
+            
+            self.cpu_current_phase = 'DECODE'
+
+        elif self.cpu_current_phase == 'DECODE':
+            print("--- PHASE: DECODE ---")
+            self.cpu_phase_timer.setInterval(200) # Đặt lại thời gian cho pha decode
+            self.highlight_component('IR', Qt.GlobalColor.darkYellow)
+            self.highlight_component('CONTROL_UNIT', Qt.GlobalColor.cyan)
+            self._animate_signal('IR_TO_CONTROL_UNIT', Qt.GlobalColor.darkMagenta) # Tín hiệu giải mã
+            
+            decoded_instruction = self.cpu.decode_instruction() # Thực hiện logic decode
+            # self.update_gui_cpu_status() # Cập nhật GUI (thường không có thay đổi lớn ở pha này)
+
+            self.cpu_current_phase = 'EXECUTE'
+            self.cpu.last_decoded_instruction = decoded_instruction # Lưu lại để execute
+
+
+        elif self.cpu_current_phase == 'EXECUTE':
+            print("--- PHASE: EXECUTE ---")
+            self.cpu_phase_timer.stop() # Dừng timer pha, chuyển giao quyền điều khiển lại cho step/run
+
+            decoded_instruction = self.cpu.last_decoded_instruction # Lấy lệnh đã giải mã
+            
+            # Kích hoạt highlight và animation theo từng loại lệnh
+            op_name = decoded_instruction['name']
+            
+            if op_name == 'ADD' or op_name == 'SUB':
+                self.highlight_component('ALU', Qt.GlobalColor.magenta)
+                self.highlight_component('A', Qt.GlobalColor.green)
+                self.highlight_component('B', Qt.GlobalColor.green)
+                self._animate_signal('REG_A_TO_ALU', Qt.GlobalColor.darkCyan)
+                self._animate_signal('REG_B_TO_ALU', Qt.GlobalColor.darkCyan)
+                self.cpu_phase_timer.setInterval(self.animation_step_duration * 2) # Đợi 2 animations
+                self.cpu_phase_timer.start() # Chạy lại timer để đợi animation xong
+                self.cpu_current_phase = 'EXECUTE_ALU_RESULT' # Chờ kết quả ALU
+                return # Thoát để chờ timer
+
+            elif op_name == 'LOAD_A':
+                self.highlight_component('A', Qt.GlobalColor.green)
+                self._animate_signal('RAM_DATA_TO_REG_A', Qt.GlobalColor.darkCyan)
+                self.cpu_phase_timer.setInterval(self.animation_step_duration + 50)
+                self.cpu_phase_timer.start()
+                self.cpu_current_phase = 'EXECUTE_WAIT_ANIM'
+                return
+            # ... Thêm các điều kiện cho các lệnh khác (LOAD_B, STORE_A/B, JUMP, etc.)
+            elif op_name == 'LOAD_B':
+                self.highlight_component('B', Qt.GlobalColor.green)
+                self._animate_signal('RAM_DATA_TO_REG_B', Qt.GlobalColor.darkCyan)
+                self.cpu_phase_timer.setInterval(self.animation_step_duration + 50)
+                self.cpu_phase_timer.start()
+                self.cpu_current_phase = 'EXECUTE_WAIT_ANIM'
+                return
+            elif op_name == 'STORE_A':
+                self.highlight_component('A', Qt.GlobalColor.darkGreen)
+                self._animate_signal('REG_A_TO_RAM_DATA_BUS', Qt.GlobalColor.darkRed)
+                self.cpu_phase_timer.setInterval(self.animation_step_duration + 50)
+                self.cpu_phase_timer.start()
+                self.cpu_current_phase = 'EXECUTE_WAIT_ANIM'
+                return
+            elif op_name == 'STORE_B':
+                self.highlight_component('B', Qt.GlobalColor.darkGreen)
+                self._animate_signal('REG_B_TO_RAM_DATA_BUS', Qt.GlobalColor.darkRed)
+                self.cpu_phase_timer.setInterval(self.animation_step_duration + 50)
+                self.cpu_phase_timer.start()
+                self.cpu_current_phase = 'EXECUTE_WAIT_ANIM'
+                return
+            elif op_name == 'JUMP' or op_name == 'JUMP_NEG' or op_name == 'JUMP_ZERO':
+                self.highlight_component('IAR', Qt.GlobalColor.blue)
+                self._animate_signal('ADDR_TO_IAR_JUMP', Qt.GlobalColor.blue)
+                self.cpu_phase_timer.setInterval(self.animation_step_duration + 50)
+                self.cpu_phase_timer.start()
+                self.cpu_current_phase = 'EXECUTE_WAIT_ANIM'
+                return
+            
+            # Đối với NOP, HALT và các lệnh không có animation đặc biệt
+            self._finish_execute_phase()
+
+        elif self.cpu_current_phase == 'EXECUTE_ALU_RESULT': # Pha phụ cho kết quả ALU
+            print("--- PHASE: EXECUTE (ALU Result) ---")
+            self._animate_signal('ALU_TO_REG_A', Qt.GlobalColor.red)
+            self.highlight_component('A', Qt.GlobalColor.red) # Reg A nhận kết quả
+            self.cpu_phase_timer.setInterval(self.animation_step_duration + 50)
+            self.cpu_phase_timer.start()
+            self.cpu_current_phase = 'EXECUTE_WAIT_ANIM' # Chờ animation kết thúc
+            return # Đảm bảo không execute() ngay lập tức
+
+        elif self.cpu_current_phase == 'EXECUTE_WAIT_ANIM': # Pha chờ animation kết thúc
+            print("--- PHASE: EXECUTE (Waiting for Animation) ---")
+            # Sau khi chờ animation, thực hiện lệnh và kết thúc chu kỳ
+            self.cpu.execute_instruction(self.cpu.last_decoded_instruction) # Thực hiện logic execute
+            self.update_gui_cpu_status() # Cập nhật GUI sau khi execute
+            self._finish_execute_phase() # Chuyển sang pha kết thúc chu kỳ
+
+        self.update_gui_cpu_status() # Cập nhật lần cuối sau pha
+
+    def _finish_execute_phase(self):
+        """Kết thúc pha Execute và chuẩn bị cho chu kỳ tiếp theo."""
+        self.cpu_phase_timer.stop() # Dừng timer pha
+        self.cpu_current_phase = 'IDLE' # Đặt lại về IDLE
+        self.run_button.setEnabled(True) # Kích hoạt lại các nút
+        self.step_button.setEnabled(True)
+        # Nếu đang ở chế độ "Run", run_timer sẽ tự động gọi step_cpu lại
+        if self.run_button.isEnabled() and not self.cpu.is_halted: # Kiểm tra để tránh lỗi khi run_button bị disable
+            if not self.run_timer.isActive(): # Nếu timer chưa chạy lại (sau step hoặc sau lần đầu run)
+                self.run_timer.start() # Tự động gọi step_cpu sau interval
+
+
+    def run_cpu(self):
+        """Chạy CPU tự động từng bước."""
+        if self.cpu.is_halted:
+            QMessageBox.information(self, "CPU Halted", "CPU đã dừng. Vui lòng Reset trước khi chạy.")
+            return
+        
+        self.run_timer.start() # Bắt đầu timer để gọi step_cpu liên tục
+        self.run_button.setEnabled(False) # Vô hiệu hóa nút Run khi đang chạy
+        self.step_button.setEnabled(False) # Vô hiệu hóa nút Step khi đang chạy
+        self.step_cpu() # Bắt đầu chu kỳ đầu tiên ngay lập tức
+
+
+    def reset_cpu(self):
+        """Đặt lại trạng thái CPU và GUI."""
+        self.run_timer.stop()
+        self.cpu_phase_timer.stop()
+        self.cpu_current_phase = 'IDLE' # Reset pha
+        self._clear_all_highlights_and_animations() # Xóa tất cả animation và highlight
+        self.cpu.reset()
+        self.update_gui_cpu_status()
+        self.run_button.setEnabled(True)
+        self.step_button.setEnabled(True)
+        QMessageBox.information(self, "Reset CPU", "CPU đã được đặt lại trạng thái ban đầu.")
