@@ -54,7 +54,7 @@ The simulated CPU operates on a fixed 8-bit instruction format: a 4-bit `opcode`
 #### Getting Started
 1.  **Clone the repository:**
     ```bash
-    git clone [repository_url]
+    git clone https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6.git
     cd cpu-visualizer
     ```
 2.  **Install dependencies:**
