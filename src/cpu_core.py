@@ -3,24 +3,24 @@
 class CPU:
     def __init__(self):
         # Khởi tạo RAM: 16 địa chỉ, mỗi địa chỉ 8 bit (sử dụng list chứa chuỗi bit)
-        self.ram = ["00000000"] * 16 # 16 địa chỉ, mỗi địa chỉ 8 bit, khởi tạo là 0
+        self.ram = ["00000000"] * 16  # 16 địa chỉ, mỗi địa chỉ 8 bit, khởi tạo là 0
 
         # Khởi tạo các thanh ghi (Registers)
         self.registers = {
-            'A': 0,    # Register A (8-bit value, 0-255)
-            'B': 0,    # Register B (8-bit value, 0-255)
-            'IR_Opcode': '0000', # Instruction Register - Opcode part (4 bits string)
-            'IR_AddrData': '0000', # Instruction Register - Address/Data part (4 bits string)
-            'IAR': 0,  # Instruction Address Register (Program Counter - PC) - 4 bits (0-15)
+            'A': 0,      # Register A (8-bit value, 0-255)
+            'B': 0,      # Register B (8-bit value, 0-255)
+            'IR_Opcode': '0000',  # Instruction Register - Opcode part (4 bits string)
+            'IR_AddrData': '0000',  # Instruction Register - Address/Data part (4 bits string)
+            'IAR': 0,    # Instruction Address Register (Program Counter - PC) - 4 bits (0-15)
         }
 
         # Khởi tạo các cờ trạng thái (Flags)
         self.flags = {
-            'O': False, # Overflow Flag
-            'Z': False, # Zero Flag
-            'N': False  # Negative Flag
+            'O': False,  # Overflow Flag
+            'Z': False,  # Zero Flag
+            'N': False   # Negative Flag
         }
-        
+
         # Bảng mã lệnh (Opcode definitions)
         self.opcode_map = {
             '0000': {'name': 'NOP', 'description': 'No Operation', 'operands': 'None'},
@@ -36,8 +36,8 @@ class CPU:
             '1111': {'name': 'HALT', 'description': 'Stop program execution', 'operands': 'None'}
         }
 
-        self.is_halted = False # Cờ báo hiệu CPU đã dừng
-        self.last_decoded_instruction = None # Lưu trữ lệnh đã giải mã
+        self.is_halted = False  # Cờ báo hiệu CPU đã dừng
+        self.last_decoded_instruction = None  # Lưu trữ lệnh đã giải mã
 
     def read_ram(self, address):
         """Đọc giá trị 8-bit từ địa chỉ RAM."""
@@ -69,18 +69,14 @@ class CPU:
 
     def _update_flags(self, result):
         """
-        Cập nhật các cờ trạng thái (Z, N, O) dựa trên giá trị kết quả.
-        Các phép toán như ADD/SUB sẽ tự kiểm tra và cập nhật cờ O.
+        Cập nhật các cờ trạng thái (Z, N) dựa trên giá trị kết quả.
+        Cờ O được xử lý riêng trong các phép toán.
         """
         # Cờ Zero (Z): Bật nếu kết quả bằng 0
         self.flags['Z'] = (result == 0)
 
         # Cờ Negative (N): Bật nếu bit cao nhất (bit thứ 7) của kết quả là 1.
-        self.flags['N'] = (result & 0b10000000) != 0
-
-        # Cờ Overflow (O) được xử lý riêng trong các phép toán.
-        # Ở đây chỉ reset nếu không phải là kết quả của phép toán.
-        # (Để đảm bảo cờ O không bị xóa nhầm trong quá trình fetch/decode)
+        self.flags['N'] = (result & 0x80) != 0
 
     def fetch_instruction(self):
         """
@@ -95,12 +91,12 @@ class CPU:
 
         self.registers['IR_Opcode'] = instruction_bits[:4]
         self.registers['IR_AddrData'] = instruction_bits[4:]
-        
+
         print(f"Fetch: RAM[{current_address}] -> IR ({self.registers['IR_Opcode']} {self.registers['IR_AddrData']})")
-        
+
         # Tăng IAR lên cho lệnh tiếp theo (nếu không có JUMP)
         self.registers['IAR'] = (self.registers['IAR'] + 1) % len(self.ram)
-        
+
         return instruction_bits
 
     def decode_instruction(self):
@@ -109,22 +105,23 @@ class CPU:
         """
         opcode_str = self.registers['IR_Opcode']
         operand_str = self.registers['IR_AddrData']
-        
+
         instruction_info = self.opcode_map.get(opcode_str)
-        
+
         if not instruction_info:
             print(f"Decode: Unknown command: {opcode_str}")
-            return {'name': 'UNKNOWN', 'operands': 'None', 'opcode_str': opcode_str, 'operand_val': None}
+            self.last_decoded_instruction = {'name': 'UNKNOWN', 'operands': 'None', 'opcode_str': opcode_str, 'operand_val': None}
+            return self.last_decoded_instruction
 
         operand_value = None
         if instruction_info['operands'] == 'Addr':
             operand_value = int(operand_str, 2)
 
         print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_value if operand_value is not None else 'N/A'})")
-        
+
         self.last_decoded_instruction = {
-            'name': instruction_info['name'], 
-            'operands': instruction_info['operands'], 
+            'name': instruction_info['name'],
+            'operands': instruction_info['operands'],
             'opcode_str': opcode_str,
             'operand_val': operand_value
         }
@@ -141,7 +138,7 @@ class CPU:
         decoded_instruction = self.last_decoded_instruction
         op_name = decoded_instruction['name']
         operand_val = decoded_instruction['operand_val']
-        
+
         print(f"Execute: {op_name}")
 
         if op_name == 'LOAD_A':
@@ -175,7 +172,8 @@ class CPU:
 
         elif op_name == 'SUB':
             result = self.registers['A'] - self.registers['B']
-            self.flags['O'] = (result < 0)
+            # Cờ Overflow cho phép trừ
+            self.flags['O'] = (result < 0 or result > 255) # Hoặc sử dụng logic 2's complement
             self.registers['A'] = result & 0xFF
             print(f"  Reg A = {self.registers['A']} - {self.registers['B']} = {self.registers['A']}")
             self._update_flags(self.registers['A'])
