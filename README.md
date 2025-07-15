@@ -1,9 +1,16 @@
 ### CPU Execution Visualizer
 <p align="center">
   <h3>Main Interface</h3>
-  <img src="assets/cpu-visualizer-interface.PNG" alt="Main Application Window" width="700">
+  <img src="assets/cpu-visualizer-interface01.PNG" alt="Main Application Window" width="700">
   <br>
   <em>The main application interface – where all functionalities are intuitively connected.</em>
+</p>
+
+<p align="center">
+  <h3>Main Interface</h3>
+  <img src="assets/cpu-visualizer-interface.PNG" alt="Main Application Window" width="700">
+  <br>
+  <em>The main application interface - program running subtract operator between 2 register a and register b.</em>
 </p>
 
 A hands-on, visual simulator for a custom 8-bit CPU. This project provides a graphical user interface (GUI) built with PyQt6 to demonstrate the fundamental concepts of computer architecture, including the CPU's internal components, memory, and the instruction execution pipeline. Users can interactively step through a program and observe data flow and component states in real-time.
