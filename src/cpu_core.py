@@ -18,7 +18,7 @@ class CPU:
         self.flags = {
             'O': False,  # Overflow Flag
             'Z': False,  # Zero Flag
-            'N': False   # Negative Flag
+            'N': False  # Negative Flag
         }
 
         # Bảng mã lệnh (Opcode definitions)
@@ -65,7 +65,14 @@ class CPU:
         opcode_str = full_instruction_str[:4]
         operand_str = full_instruction_str[4:]
         op_info = self.opcode_map.get(opcode_str, {'name': 'UNKNOWN'})
-        print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']} {int(operand_str, 2) if op_info.get('operands') == 'Addr' else ''})")
+        
+        operand_display = ''
+        if op_info['operands'] == 'Addr':
+            operand_display = f" {int(operand_str, 2)}"
+        elif op_info['operands'] == 'Regs':
+            operand_display = " RegA, RegB"
+    
+        print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']}{operand_display})")
 
     def _update_flags(self, result):
         """
@@ -94,9 +101,6 @@ class CPU:
 
         print(f"Fetch: RAM[{current_address}] -> IR ({self.registers['IR_Opcode']} {self.registers['IR_AddrData']})")
 
-        # Tăng IAR lên cho lệnh tiếp theo (nếu không có JUMP)
-        self.registers['IAR'] = (self.registers['IAR'] + 1) % len(self.ram)
-
         return instruction_bits
 
     def decode_instruction(self):
@@ -113,11 +117,18 @@ class CPU:
             self.last_decoded_instruction = {'name': 'UNKNOWN', 'operands': 'None', 'opcode_str': opcode_str, 'operand_val': None}
             return self.last_decoded_instruction
 
+        operand_display = 'N/A'
         operand_value = None
         if instruction_info['operands'] == 'Addr':
             operand_value = int(operand_str, 2)
-
-        print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_value if operand_value is not None else 'N/A'})")
+            operand_display = operand_value
+        elif instruction_info['operands'] == 'Regs':
+            # Với ADD, SUB, 4 bit cuối có thể là các thanh ghi
+            # Ví dụ: b[0]b[1] cho Reg A, b[2]b[3] cho Reg B
+            # Tuy nhiên, trong mô hình này, chúng ta giả định nó là ADD A, B
+            operand_display = f"RegA, RegB"
+            # Lưu ý: nếu cần, bạn có thể giải mã chi tiết hơn ở đây
+        print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_display})")
 
         self.last_decoded_instruction = {
             'name': instruction_info['name'],
@@ -126,6 +137,19 @@ class CPU:
             'operand_val': operand_value
         }
         return self.last_decoded_instruction
+
+            
+        """# Đã cập nhật để in ra thông tin chi tiết
+        operand_display = operand_value if operand_value is not None else 'N/A'
+        print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_display})")
+
+        self.last_decoded_instruction = {
+            'name': instruction_info['name'],
+            'operands': instruction_info['operands'],
+            'opcode_str': opcode_str,
+            'operand_val': operand_value
+        }
+        return self.last_decoded_instruction"""
 
     def execute_instruction(self):
         """
@@ -164,18 +188,27 @@ class CPU:
             print(f"  RAM[{operand_val}] = Reg B ({self.registers['B']})")
 
         elif op_name == 'ADD':
-            result = self.registers['A'] + self.registers['B']
+            val_a_before = self.registers['A']
+            val_b_before = self.registers['B']
+            
+            result = val_a_before + val_b_before
             self.flags['O'] = (result > 255)
             self.registers['A'] = result & 0xFF
-            print(f"  Reg A = {self.registers['A']} + {self.registers['B']} = {self.registers['A']}")
+            
+            print(f"  Reg A = {val_a_before} + {val_b_before} = {self.registers['A']}")
             self._update_flags(self.registers['A'])
 
         elif op_name == 'SUB':
+            # Lưu giá trị ban đầu để in ra
+            val_a_before = self.registers['A']
+            val_b_before = self.registers['B']
+
             result = self.registers['A'] - self.registers['B']
-            # Cờ Overflow cho phép trừ
-            self.flags['O'] = (result < 0 or result > 255) # Hoặc sử dụng logic 2's complement
+            self.flags['O'] = (result < 0 or result > 255)
             self.registers['A'] = result & 0xFF
-            print(f"  Reg A = {self.registers['A']} - {self.registers['B']} = {self.registers['A']}")
+            
+            # Sửa dòng in tương tự như ADD
+            print(f"  Reg A = {val_a_before} - {val_b_before} = {self.registers['A']}")
             self._update_flags(self.registers['A'])
 
         elif op_name == 'JUMP':
@@ -203,16 +236,34 @@ class CPU:
         elif op_name == 'UNKNOWN':
             print("  Error: Unknown command. Stopping execution.")
             self.is_halted = True
+            
+    def increment_iar(self):
+        """Tăng giá trị của thanh ghi IAR lên 1."""
+        self.registers['IAR'] = (self.registers['IAR'] + 1) % 16 # Đảm bảo IAR không vượt quá 15
+        print(f"IAR incremented to {self.registers['IAR']}")
 
+    def calculate_alu_output(self):
+        """Tính toán giá trị đầu ra của ALU mà không thực thi lệnh."""
+        # Giả định ADD và SUB là 2 lệnh ALU chính
+        if self.last_decoded_instruction:
+            op_name = self.last_decoded_instruction.get('name')
+            if op_name == 'ADD':
+                return (self.registers['A'] + self.registers['B']) & 0xFF
+            elif op_name == 'SUB':
+                return (self.registers['A'] - self.registers['B']) & 0xFF
+        return 0 # Trả về 0 hoặc giá trị mặc định nếu không phải lệnh ALU
+    
+    # Hàm reset đã được cập nhật để KHÔNG xóa RAM
     def reset(self):
-        """Đặt lại trạng thái CPU về ban đầu."""
-        self.ram = ["00000000"] * 16
-        self.registers = {
-            'A': 0, 'B': 0,
-            'IR_Opcode': '0000', 'IR_AddrData': '0000',
-            'IAR': 0,
-        }
-        self.flags = {'O': False, 'Z': False, 'N': False}
+        """Đặt lại trạng thái CPU về ban đầu (trừ RAM)."""
+        self.registers['A'] = 0
+        self.registers['B'] = 0
+        self.registers['IR_Opcode'] = '0000'
+        self.registers['IR_AddrData'] = '0000'
+        self.registers['IAR'] = 0
+        self.flags['O'] = False
+        self.flags['Z'] = False
+        self.flags['N'] = False
         self.is_halted = False
         self.last_decoded_instruction = None
-        print("CPU has been reset.")
+        print("CPU has been reset (registers and flags only).")
