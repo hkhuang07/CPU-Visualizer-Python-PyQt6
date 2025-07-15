@@ -1,36 +1,99 @@
-import sys
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,
-    QGraphicsScene, QComboBox, QLineEdit, QFormLayout, QMessageBox, QGraphicsRectItem
-)
-from PyQt6.QtGui import QPixmap, QColor, QPen, QFont, QBrush
-from PyQt6.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QRectF
+<h3>Instruction Set Architecture (ISA) Guide</h3>
+        <p><b>8-bit Instruction Structure: [4-bit Opcode] [4-bit Operand/Address]</b></p>
+        <p>Each instruction is 8 bits long. The first 4 bits represent the operation code (opcode), and the last 4 bits are the operand or a memory address.</p>
 
-from .cpu_core import CPU
+        <p><b>Data Transfer Instructions:</b></p>
+        <ul>
+            <li>
+                <b>LOAD_A (Opcode: 0001)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0001):</b> Specifies the "Load into Register A" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The CPU fetches the 8-bit value from this address in RAM and loads it into Register A.</li>
+                </ul>
+            </li>
+            <li>
+                <b>LOAD_B (Opcode: 0010)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0010):</b> Specifies the "Load into Register B" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The CPU fetches the 8-bit value from this address in RAM and loads it into Register B.</li>
+                </ul>
+            </li>
+            <li>
+                <b>STORE_A (Opcode: 0011)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0011):</b> Specifies the "Store from Register A" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The 8-bit value from Register A is stored into this memory location in RAM.</li>
+                </ul>
+            </li>
+            <li>
+                <b>STORE_B (Opcode: 0100)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0100):</b> Specifies the "Store from Register B" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The 8-bit value from Register B is stored into this memory location in RAM.</li>
+                </ul>
+            </li>
+        </ul>
 
-# Định nghĩa TỌA ĐỘ cho các thành phần trên sơ đồ (BẠN CẦN THAY ĐỔI THEO HÌNH CỦA BẠN!)
-# Các tọa độ này là giả định, bạn phải thay đổi chúng dựa trên file ảnh của bạn.
-# Nên có khoảng cách đủ lớn giữa các thành phần để đặt giá trị
-DIAGRAM_COORDS = {
-    'IAR_TEXT_POS': QPointF(50, 60), # Vị trí chữ số của IAR (Program Counter)
-    'IR_OPCODE_TEXT_POS': QPointF(200, 60), # Vị trí chữ số Opcode trong IR
-    'IR_ADDRDATA_TEXT_POS': QPointF(270, 60), # Vị trí chữ số Addr/Data trong IR
-    'REG_A_TEXT_POS': QPointF(100, 200), # Vị trí chữ số Register A
-    'REG_B_TEXT_POS': QPointF(100, 250), # Vị trí chữ số Register B
-    'ALU_OUT_TEXT_POS': QPointF(250, 300), # Vị trí kết quả đầu ra của ALU (ví dụ tạm)
-    'FLAG_Z_POS': QPointF(400, 50), # Vị trí cờ Z
-    'FLAG_N_POS': QPointF(430, 50), # Vị trí cờ N
-    'FLAG_O_POS': QPointF(460, 50), # Vị trí cờ O
+        <p><b>Arithmetic & Logic Instructions:</b></p>
+        <ul>
+            <li>
+                <b>ADD (Opcode: 0101)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0101):</b> Specifies the "Addition" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is hardcoded to <b>'1001'</b>. The first two bits ('10') represent the source Register B, and the last two bits ('01') represent the source Register A. The ALU performs the addition (Register B + Register A), and the 8-bit result is automatically stored back into Register A.</li>
+                </ul>
+            </li>
+            <li>
+                <b>SUB (Opcode: 0110)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0110):</b> Specifies the "Subtraction" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is hardcoded to <b>'1001'</b>. The first two bits ('10') represent the source Register B, and the last two bits ('01') represent the source Register A. The ALU performs the subtraction (Register B - Register A), and the 8-bit result is automatically stored back into Register A.</li>
+                </ul>
+            </li>
+        </ul>
 
-    # Vị trí các ô RAM (ví dụ cho 3 ô đầu tiên, bạn cần mở rộng cho 16 ô)
-    # Đây là nơi giá trị RAM sẽ hiển thị trực tiếp trên sơ đồ
-    'RAM_CELL_POSITIONS': {
-        0: QPointF(700, 100),
-        1: QPointF(700, 120),
-        2: QPointF(700, 140),
-        # ... thêm các địa chỉ khác
-    },
+        <p><b>Control Flow Instructions:</b></p>
+        <ul>
+            <li>
+                <b>JUMP (Opcode: 0111)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0111):</b> Specifies an unconditional "Jump" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>New Instruction Address</b>. The value in the Instruction Address Register (IAR) is updated to this new address, causing the CPU to fetch the next instruction from this location.</li>
+                </ul>
+            </li>
+            <li>
+                <b>JUMP_NEG (Opcode: 1000)</b>
+                <ul>
+                    <li><b>4-bit Opcode (1000):</b> Specifies a conditional "Jump if Negative" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>New Instruction Address</b>. The CPU checks the 'N' (Negative) flag. If the flag is set (true), the IAR is updated to this new address. Otherwise, the IAR is simply incremented.</li>
+                </ul>
+            </li>
+            <li>
+                <b>JUMP_ZERO (Opcode: 1001)</b>
+                <ul>
+                    <li><b>4-bit Opcode (1001):</b> Specifies a conditional "Jump if Zero" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>New Instruction Address</b>. The CPU checks the 'Z' (Zero) flag. If the flag is set (true), the IAR is updated to this new address. Otherwise, the IAR is simply incremented.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <p><b>Other Instructions:</b></p>
+        <ul>
+            <li>
+                <b>NOP (Opcode: 0000)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0000):</b> Specifies the "No Operation" instruction.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is ignored. The CPU does nothing and simply increments the IAR to fetch the next instruction.</li>
+                </ul>
+            </li>
+            <li>
+                <b>HALT (Opcode: 1111)</b>
+                <ul>
+                    <li><b>4-bit Opcode (1111):</b> Specifies the "Halt" instruction.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is ignored. The CPU stops all operations and enters a halted state.</li>
+                </ul>
+            </li>
+        </ul>
 
     # Vùng cho các hình chữ nhật bao quanh để highlight
     'IAR_RECT': QRectF(40, 50, 60, 30), # (x, y, width, height)
