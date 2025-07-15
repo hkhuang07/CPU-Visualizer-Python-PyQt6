@@ -1,12 +1,19 @@
 import sys
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,
     QGraphicsScene, QComboBox, QLineEdit, QFormLayout, QMessageBox, QGraphicsRectItem,
-    QGroupBox, QGraphicsPathItem, QGraphicsProxyWidget, QScrollArea
+    QGroupBox, QGraphicsPathItem, QGraphicsProxyWidget, QScrollArea,
+    QTabWidget, QTextEdit # <-- Đã thêm các lớp này vào PyQt6.QtWidgets
 )
-from PyQt6.QtGui import QPixmap, QColor, QPen, QFont, QBrush, QTransform, QResizeEvent, QPainterPath
-from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF, QPropertyAnimation, QSequentialAnimationGroup
+from PyQt6.QtGui import (
+    QPixmap, QColor, QPen, QFont, QBrush, QTransform, QResizeEvent, QPainterPath
+)
+from PyQt6.QtCore import (
+    Qt, QTimer, QPointF, QRectF, QPropertyAnimation, QSequentialAnimationGroup,
+    QObject, pyqtSignal, QCoreApplication # <-- Đã thêm các lớp này vào PyQt6.QtCore
+)
 
 # Import các file của bạn từ cùng một gói (package)
 from .cpu_core import CPU
@@ -39,19 +46,28 @@ DIAGRAM_COORDS_ORIGINAL = {
     'CONTROL_UNIT_RECT': QRectF(500, 320, 150, 100),
 }
 SIGNAL_PATHS_ORIGINAL = {
-    'IAR_TO_RAM_ADDR_BUS': [QPointF(530, 120), QPointF(530, 50), QPointF(800, 50), QPointF(800, 100)],
-    'RAM_DATA_TO_IR': [QPointF(800, 250), QPointF(700, 250), QPointF(700, 220), QPointF(670, 220)],
-    'IR_TO_CONTROL_UNIT': [QPointF(690, 290), QPointF(690, 350), QPointF(650, 350)],
-    'RAM_DATA_TO_REG_A': [QPointF(800, 250), QPointF(450, 250), QPointF(450, 240), QPointF(290, 240)],
-    'RAM_DATA_TO_REG_B': [QPointF(800, 250), QPointF(450, 250), QPointF(450, 240), QPointF(460, 240)],
-    'REG_A_TO_RAM_DATA_BUS': [QPointF(290, 240), QPointF(450, 240), QPointF(450, 250), QPointF(800, 250)],
-    'REG_B_TO_RAM_DATA_BUS': [QPointF(460, 240), QPointF(450, 240), QPointF(450, 250), QPointF(800, 250)],
-    'REG_A_TO_ALU': [QPointF(290, 240), QPointF(290, 360)],
-    'REG_B_TO_ALU': [QPointF(460, 240), QPointF(460, 360), QPointF(390, 360)],
-    'ALU_TO_REG_A': [QPointF(280, 460), QPointF(280, 270)],
-    'ADDR_TO_IAR_JUMP': [QPointF(690, 270), QPointF(690, 120), QPointF(580, 120)],
+    'IAR_TO_RAM_ADDR_BUS': [QPointF(430, 400), QPointF(530, 50), QPointF(800, 50), QPointF(695, 67)],
+    'RAM_DATA_TO_IR': [QPointF(695, 67), QPointF(700, 250), QPointF(700, 220), QPointF(500, 330)],
+    'IR_TO_CONTROL_UNIT': [QPointF(500, 330), QPointF(690, 350), QPointF(500, 330)],
+    'RAM_DATA_TO_REG_A': [QPointF(695, 67), QPointF(450, 250), QPointF(450, 240),  QPointF(50, 120)],
+    'RAM_DATA_TO_REG_B': [QPointF(695, 67), QPointF(450, 250), QPointF(450, 240), QPointF(200, 120)],
+    'REG_A_TO_RAM_DATA_BUS': [QPointF(50, 120), QPointF(450, 240), QPointF(450, 250), QPointF(695, 67)],
+    'REG_B_TO_RAM_DATA_BUS': [ QPointF(200, 120), QPointF(450, 240), QPointF(450, 250), QPointF(695, 67)],
+    'REG_A_TO_ALU': [QPointF(50, 120),  QPointF(400, 330)],
+    'REG_B_TO_ALU': [QPointF(200, 120), QPointF(460, 360), QPointF(400, 330)],
+    'ALU_TO_REG_A': [ QPointF(400, 330), QPointF(50, 120)],
+    'ADDR_TO_IAR_JUMP': [ QPointF(500, 330), QPointF(690, 120), QPointF(430, 400)],
 }
 
+class EmittingStream(QObject):
+    textWritten = pyqtSignal(str)
+
+    def write(self, text):
+        self.textWritten.emit(str(text))
+        QCoreApplication.processEvents() # Cần thiết để cập nhật ngay lập tức
+
+    def flush(self):
+        pass
 
 class CPUVisualizerApp(QMainWindow):
     def __init__(self):
@@ -116,74 +132,24 @@ class CPUVisualizerApp(QMainWindow):
             self.update_diagram_element_positions()
 
     def init_ui(self):
-        self.control_panel_layout = QVBoxLayout()
-        self.main_layout.addLayout(self.control_panel_layout, 1)
+        # Tạo một widget trung tâm cho QMainWindow
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
 
-        self.diagram_layout = QVBoxLayout()
-        self.main_layout.addLayout(self.diagram_layout, 4)
-        
-        self.top_buttons_layout = QHBoxLayout()
-        self.run_button = QPushButton("Run")
-        self.step_button = QPushButton("Step")
-        self.reset_button = QPushButton("Reset")
-        
-        self.run_button.clicked.connect(self.run_cpu)
-        self.step_button.clicked.connect(self.step_cpu)
-        self.reset_button.clicked.connect(self.reset_cpu)
+        # Thiết lập bố cục tổng thể cho widget trung tâm
+        self.main_layout = QHBoxLayout(central_widget)
 
-        self.top_buttons_layout.addWidget(self.run_button)
-        self.top_buttons_layout.addWidget(self.step_button)
-        self.top_buttons_layout.addWidget(self.reset_button)
-        self.diagram_layout.addLayout(self.top_buttons_layout)
-        
-        self.view = QGraphicsView(self.scene)
-        self.diagram_layout.addWidget(self.view)
-        
-        try:
-            self.cpu_diagram_pixmap = QPixmap("assets/cpu-diagram01.PNG")
-            if self.cpu_diagram_pixmap.isNull():
-                QMessageBox.critical(self, "Error loading image", "Could not load CPU diagram image. Check path 'assets/cpu-diagram01.PNG'.")
-                self.scene.addRect(0, 0, 1000, 600, QPen(QColor("red")), QBrush(QColor("lightgray")))
-            else:
-                self.scene.addPixmap(self.cpu_diagram_pixmap)
-                self.scene.setSceneRect(QRectF(self.cpu_diagram_pixmap.rect()))
-        except Exception as e:
-            QMessageBox.critical(self, "Error loading image", f"An error occurred while loading image: {e}")
-            self.scene.addRect(0, 0, 1000, 600, QPen(QColor("red")), QBrush(QColor("lightgray")))
-        
-        self.ram_group_box = QGroupBox("RAM (Instruction/Data)")
-        self.ram_group_box_layout = QVBoxLayout(self.ram_group_box)
-        
-        self.ram_group_box.setFixedSize(180, 440) 
-        
-        self.ram_table = QTableWidget(16, 2)
-        self.ram_table.setHorizontalHeaderLabels(["Addr", "Data (8-bit)"])
-        for i in range(16):
-            self.ram_table.setItem(i, 0, QTableWidgetItem(str(i)))
-            self.ram_table.setItem(i, 1, QTableWidgetItem("00000000"))
-        
-        self.ram_table.setColumnWidth(0, 50)
-        self.ram_table.setColumnWidth(1, 85)
-        self.ram_table.verticalHeader().setDefaultSectionSize(20)
-        
-        self.ram_table.verticalHeader().setVisible(False)
-        self.ram_group_box_layout.addWidget(self.ram_table)
-        
-        self.ram_proxy_widget = self.scene.addWidget(self.ram_group_box)
-        
-        self.setup_diagram_elements()
-        QTimer.singleShot(0, self.adjust_diagram_scale)
+        # 1. Cột trái: Loaders và Registers/Flags
+        self.left_panel_layout = QVBoxLayout()
+        self.main_layout.addLayout(self.left_panel_layout, 1)
 
-        self.bottom_control_layout = QVBoxLayout()
-        self.control_panel_layout.addLayout(self.bottom_control_layout, 1)
-        
-        self.loader_layout = QHBoxLayout()
-
+        # Loaders - Sắp xếp theo chiều dọc
         self.instr_loader_group_box = QGroupBox("Load Instruction")
         self.instr_loader_layout = QVBoxLayout(self.instr_loader_group_box)
         self.instr_loader_form = QFormLayout()
         
-        self.instr_loader_group_box.setFixedHeight(130)
+        # Bỏ dòng setFixed Height để tối ưu hóa không gian
+        # self.instr_loader_group_box.setFixedHeight(130)
 
         self.instr_address_input = QLineEdit("0")
         self.instr_address_input.setPlaceholderText("0-15")
@@ -202,20 +168,29 @@ class CPUVisualizerApp(QMainWindow):
         self.load_instr_button = QPushButton("Load")
         self.load_instr_button.clicked.connect(self.load_instruction_gui)
 
+        # Thiết lập khoảng cách giữa các widget và nút Load
         self.instr_loader_form.addRow(QLabel("Address:"), self.instr_address_input)
         self.instr_loader_form.addRow(QLabel("Opcode:"), self.opcode_combo)
         self.instr_loader_form.addRow(QLabel("Operand/Addr:"), self.data_for_instr_input)
         
-        self.instr_loader_layout.addLayout(self.instr_loader_form)
-        self.instr_loader_layout.addWidget(self.load_instr_button)
+        # Sử dụng QHBoxLayout để đặt nút Load ngay dưới form, giảm khoảng trống
+        load_instr_button_layout = QHBoxLayout()
+        load_instr_button_layout.addStretch()
+        load_instr_button_layout.addWidget(self.load_instr_button)
+        load_instr_button_layout.addStretch()
         
-        self.loader_layout.addWidget(self.instr_loader_group_box)
+        self.instr_loader_layout.addLayout(self.instr_loader_form)
+        self.instr_loader_layout.addLayout(load_instr_button_layout)
+        
+        # Sắp xếp các block Load theo chiều dọc
+        self.left_panel_layout.addWidget(self.instr_loader_group_box)
 
         self.data_loader_group_box = QGroupBox("Load Data")
         self.data_loader_layout = QVBoxLayout(self.data_loader_group_box)
         self.data_loader_form = QFormLayout()
         
-        self.data_loader_group_box.setFixedHeight(130)
+        # Bỏ dòng setFixed Height
+        # self.data_loader_group_box.setFixedHeight(130)
         
         self.data_address_input = QLineEdit("0")
         self.data_address_input.setPlaceholderText("0-15")
@@ -231,15 +206,116 @@ class CPUVisualizerApp(QMainWindow):
         self.data_loader_form.addRow(QLabel("Address:"), self.data_address_input)
         self.data_loader_form.addRow(QLabel("Value (Dec):"), self.data_value_input)
         
+        # Sử dụng QHBoxLayout để đặt nút Load ngay dưới form, giảm khoảng trống
+        load_data_button_layout = QHBoxLayout()
+        load_data_button_layout.addStretch()
+        load_data_button_layout.addWidget(self.load_data_button)
+        load_data_button_layout.addStretch()
+        
         self.data_loader_layout.addLayout(self.data_loader_form)
-        self.data_loader_layout.addWidget(self.load_data_button)
+        self.data_loader_layout.addLayout(load_data_button_layout)
         
-        self.loader_layout.addWidget(self.data_loader_group_box)
-        
-        self.bottom_control_layout.addLayout(self.loader_layout)
-        
-        self._handle_opcode_change(0)
+        self.left_panel_layout.addWidget(self.data_loader_group_box)
 
+        # Registers and Flags - Sắp xếp theo chiều dọc
+        self.reg_group_box = QGroupBox("CPU Registers")
+        self.reg_layout = QVBoxLayout(self.reg_group_box)
+        self.flags_group_box = QGroupBox("CPU Flags")
+        self.flags_layout = QVBoxLayout(self.flags_group_box)
+
+        self.setup_register_and_flag_display(self.reg_layout, self.flags_layout)
+        
+        # Thêm các groupbox vào bố cục chính của panel trái theo chiều dọc
+        self.left_panel_layout.addWidget(self.reg_group_box)
+        self.left_panel_layout.addWidget(self.flags_group_box)
+        
+        # Thêm một khoảng giãn ở dưới cùng để đẩy các widget lên trên
+        self.left_panel_layout.addStretch(1)
+        
+        # 2. Cột giữa: Sơ đồ CPU
+        self.diagram_layout = QVBoxLayout()
+        self.main_layout.addLayout(self.diagram_layout, 4)
+
+        # Các nút điều khiển
+        self.top_buttons_layout = QHBoxLayout()
+        self.run_button = QPushButton("Run")
+        self.step_button = QPushButton("Step")
+        self.reset_button = QPushButton("Reset")
+        
+        self.run_button.clicked.connect(self.run_cpu)
+        self.step_button.clicked.connect(self.step_cpu)
+        self.reset_button.clicked.connect(self.reset_cpu)
+
+        self.top_buttons_layout.addWidget(self.run_button)
+        self.top_buttons_layout.addWidget(self.step_button)
+        self.top_buttons_layout.addWidget(self.reset_button)
+        self.diagram_layout.addLayout(self.top_buttons_layout)
+        
+        # Vùng hiển thị sơ đồ
+        self.view = QGraphicsView(self.scene)
+        self.diagram_layout.addWidget(self.view)
+        
+        # Tải sơ đồ CPU
+        try:
+            self.cpu_diagram_pixmap = QPixmap("assets/cpu-diagram01.PNG")
+            if self.cpu_diagram_pixmap.isNull():
+                QMessageBox.critical(self, "Error loading image", "Could not load CPU diagram image. Check path 'assets/cpu-diagram01.PNG'.")
+                self.scene.addRect(0, 0, 1000, 600, QPen(QColor("red")), QBrush(QColor("lightgray")))
+            else:
+                self.scene.addPixmap(self.cpu_diagram_pixmap)
+                self.scene.setSceneRect(QRectF(self.cpu_diagram_pixmap.rect()))
+        except Exception as e:
+            QMessageBox.critical(self, "Error loading image", f"An error occurred while loading image: {e}")
+            self.scene.addRect(0, 0, 1000, 600, QPen(QColor("red")), QBrush(QColor("lightgray")))
+        
+        # Bảng RAM
+        self.ram_group_box = QGroupBox("RAM (Instruction/Data)")
+        self.ram_group_box_layout = QVBoxLayout(self.ram_group_box)
+        self.ram_group_box.setFixedSize(180, 440) 
+        self.ram_table = QTableWidget(16, 2)
+        self.ram_table.setHorizontalHeaderLabels(["Addr", "Data (8-bit)"])
+        for i in range(16):
+            self.ram_table.setItem(i, 0, QTableWidgetItem(str(i)))
+            self.ram_table.setItem(i, 1, QTableWidgetItem("00000000"))
+        self.ram_table.setColumnWidth(0, 50)
+        self.ram_table.setColumnWidth(1, 85)
+        self.ram_table.verticalHeader().setDefaultSectionSize(20)
+        self.ram_table.verticalHeader().setVisible(False)
+        self.ram_group_box_layout.addWidget(self.ram_table)
+        
+        self.ram_proxy_widget = self.scene.addWidget(self.ram_group_box)
+        
+        self.setup_diagram_elements()
+        QTimer.singleShot(0, self.adjust_diagram_scale)
+
+        # 3. Cột phải: Tab Widget
+        self.right_panel_layout = QVBoxLayout()
+        # Giảm chiều rộng của cột bên phải
+        self.main_layout.addLayout(self.right_panel_layout, 2)
+        
+        self.tab_widget = QTabWidget()
+        self.right_panel_layout.addWidget(self.tab_widget)
+
+        # Tab 1: Output Terminal
+        self.terminal_tab = QWidget()
+        self.terminal_layout = QVBoxLayout(self.terminal_tab)
+        self.terminal_output = QTextEdit()
+        self.terminal_output.setReadOnly(True)
+        
+        # Thiết lập màu nền và màu chữ
+        self.terminal_output.setStyleSheet("background-color: black; color: #00FF00;")
+        
+        self.terminal_layout.addWidget(self.terminal_output)
+        self.tab_widget.addTab(self.terminal_tab, "Output Terminal")
+        
+        # Chuyển hướng stdout
+        # Đảm bảo đã import EmittingStream và các lớp liên quan
+        sys.stdout = EmittingStream()
+        sys.stdout.textWritten.connect(self.terminal_output.insertPlainText)
+        
+        # Tab 2: Instruction Guide
+        self.guide_tab = QWidget()
+        self.guide_layout = QVBoxLayout(self.guide_tab)
         self.instruction_guide_box = QGroupBox("Instruction Guide")
         self.instruction_guide_layout = QVBoxLayout(self.instruction_guide_box)
         
@@ -249,7 +325,106 @@ class CPUVisualizerApp(QMainWindow):
         guide_content_widget = QWidget()
         guide_content_layout = QVBoxLayout(guide_content_widget)
         
-        guide_text = """ opcode_instruction_gui """
+        guide_text = """
+        <h3>Instruction Set Architecture (ISA) Guide</h3>
+        <p><b>8-bit Instruction Structure: [4-bit Opcode] [4-bit Operand/Address]</b></p>
+        <p>Each instruction is 8 bits long. The first 4 bits represent the operation code (opcode), and the last 4 bits are the operand or a memory address.</p>
+
+        <p><b>Data Transfer Instructions:</b></p>
+        <ul>
+            <li>
+                <b>LOAD_A (Opcode: 0001)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0001):</b> Specifies the "Load into Register A" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The CPU fetches the 8-bit value from this address in RAM and loads it into Register A.</li>
+                </ul>
+            </li>
+            <li>
+                <b>LOAD_B (Opcode: 0010)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0010):</b> Specifies the "Load into Register B" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The CPU fetches the 8-bit value from this address in RAM and loads it into Register B.</li>
+                </ul>
+            </li>
+            <li>
+                <b>STORE_A (Opcode: 0011)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0011):</b> Specifies the "Store from Register A" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The 8-bit value from Register A is stored into this memory location in RAM.</li>
+                </ul>
+            </li>
+            <li>
+                <b>STORE_B (Opcode: 0100)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0100):</b> Specifies the "Store from Register B" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>RAM Address</b>. The 8-bit value from Register B is stored into this memory location in RAM.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <p><b>Arithmetic & Logic Instructions:</b></p>
+        <ul>
+            <li>
+                <b>ADD (Opcode: 0101)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0101):</b> Specifies the "Addition" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is hardcoded to <b>'1001'</b>. The first two bits ('10') represent the source Register B, and the last two bits ('01') represent the source Register A. The ALU performs the addition (Register B + Register A), and the 8-bit result is automatically stored back into Register A.</li>
+                </ul>
+            </li>
+            <li>
+                <b>SUB (Opcode: 0110)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0110):</b> Specifies the "Subtraction" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is hardcoded to <b>'1001'</b>. The first two bits ('10') represent the source Register B, and the last two bits ('01') represent the source Register A. The ALU performs the subtraction (Register B - Register A), and the 8-bit result is automatically stored back into Register A.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <p><b>Control Flow Instructions:</b></p>
+        <ul>
+            <li>
+                <b>JUMP (Opcode: 0111)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0111):</b> Specifies an unconditional "Jump" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>New Instruction Address</b>. The value in the Instruction Address Register (IAR) is updated to this new address, causing the CPU to fetch the next instruction from this location.</li>
+                </ul>
+            </li>
+            <li>
+                <b>JUMP_NEG (Opcode: 1000)</b>
+                <ul>
+                    <li><b>4-bit Opcode (1000):</b> Specifies a conditional "Jump if Negative" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>New Instruction Address</b>. The CPU checks the 'N' (Negative) flag. If the flag is set (true), the IAR is updated to this new address. Otherwise, the IAR is simply incremented.</li>
+                </ul>
+            </li>
+            <li>
+                <b>JUMP_ZERO (Opcode: 1001)</b>
+                <ul>
+                    <li><b>4-bit Opcode (1001):</b> Specifies a conditional "Jump if Zero" operation.</li>
+                    <li><b>4-bit Operand/Address:</b> This is the <b>New Instruction Address</b>. The CPU checks the 'Z' (Zero) flag. If the flag is set (true), the IAR is updated to this new address. Otherwise, the IAR is simply incremented.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <p><b>Other Instructions:</b></p>
+        <ul>
+            <li>
+                <b>NOP (Opcode: 0000)</b>
+                <ul>
+                    <li><b>4-bit Opcode (0000):</b> Specifies the "No Operation" instruction.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is ignored. The CPU does nothing and simply increments the IAR to fetch the next instruction.</li>
+                </ul>
+            </li>
+            <li>
+                <b>HALT (Opcode: 1111)</b>
+                <ul>
+                    <li><b>4-bit Opcode (1111):</b> Specifies the "Halt" instruction.</li>
+                    <li><b>4-bit Operand/Address:</b> This field is ignored. The CPU stops all operations and enters a halted state.</li>
+                </ul>
+            </li>
+        </ul>
+
+
+        """
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
         guide_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -258,25 +433,12 @@ class CPUVisualizerApp(QMainWindow):
         guide_content_layout.addStretch()
         
         scroll_area.setWidget(guide_content_widget)
-        
         self.instruction_guide_layout.addWidget(scroll_area)
-        self.bottom_control_layout.addWidget(self.instruction_guide_box)
-        
-        self.reg_flag_layout = QHBoxLayout()
-        self.reg_group_box = QGroupBox("CPU Registers")
-        self.reg_layout = QVBoxLayout(self.reg_group_box)
-        self.flags_group_box = QGroupBox("CPU Flags")
-        self.flags_layout = QVBoxLayout(self.flags_group_box)
+        self.guide_layout.addWidget(self.instruction_guide_box)
+        self.tab_widget.addTab(self.guide_tab, "Instruction Guide")
 
-        self.reg_group_box.setFixedHeight(110)
-        self.flags_group_box.setFixedHeight(110)
-
-        self.setup_register_and_flag_display(self.reg_layout, self.flags_layout)
-
-        self.reg_flag_layout.addWidget(self.reg_group_box)
-        self.reg_flag_layout.addWidget(self.flags_group_box)
-
-        self.bottom_control_layout.addLayout(self.reg_flag_layout)
+        # Gọi hàm xử lý thay đổi opcode lần đầu tiên
+        self._handle_opcode_change(0)
         
     def _handle_opcode_change(self, index):
         opcode_bits = self.opcode_combo.currentData()
@@ -461,7 +623,9 @@ class CPUVisualizerApp(QMainWindow):
                 operand_bits = f"{operand_value:04b}"
 
             full_instruction = opcode_bits + operand_bits
-            self.cpu.load_ram(address, full_instruction)
+            
+            # Sửa: Gọi hàm tải lệnh chuyên biệt để in ra output đúng
+            self.cpu.load_instruction(address, full_instruction)
             self.update_gui_cpu_status()
             QMessageBox.information(self, "Success", f"Loaded instruction '{full_instruction}' into RAM[{address}].")
 
@@ -486,7 +650,9 @@ class CPUVisualizerApp(QMainWindow):
 
             binary_value = f"{value:08b}"
             
-            self.cpu.load_ram(address, binary_value)
+          
+            self.cpu.write_ram(address, binary_value)
+            print(f"Loaded data: RAM[{address}] = {binary_value} (Decimal: {value})")
             self.update_gui_cpu_status()
             QMessageBox.information(self, "Success", f"Loaded data '{binary_value}' (Dec: {value}) into RAM[{address}].")
         except ValueError:
@@ -554,7 +720,6 @@ class CPUVisualizerApp(QMainWindow):
             self.run_button.setEnabled(True)
             self._run_next_phase_after_delay()
 
-
     def run_cpu(self):
         if self.cpu.is_halted:
             QMessageBox.information(self, "CPU Halted", "CPU is in a halted state. Please press 'Reset' to restart.")
@@ -568,7 +733,6 @@ class CPUVisualizerApp(QMainWindow):
             self.run_button.setText("Pause")
             self._advance_cpu_phase()
 
-
     def step_cpu(self):
         if self.cpu.is_halted:
             QMessageBox.information(self, "CPU Halted", "CPU has halted. Please press 'Reset' to restart.")
@@ -579,7 +743,6 @@ class CPUVisualizerApp(QMainWindow):
         self.step_button.setEnabled(False)
         self.run_button.setEnabled(False)
         self._advance_cpu_phase()
-
 
     def _advance_cpu_phase(self):
         # Sửa: Thêm kiểm tra trạng thái animation để tránh chồng chéo
@@ -737,7 +900,6 @@ class CPUVisualizerApp(QMainWindow):
         self.update_gui_cpu_status()
         self.ram_group_box.setStyleSheet("")
         QMessageBox.information(self, "Reset", "CPU has been reset.")
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

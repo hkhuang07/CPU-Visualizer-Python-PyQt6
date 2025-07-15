@@ -28,8 +28,8 @@ class CPU:
             '0010': {'name': 'LOAD_B', 'description': 'Load value from RAM[Addr] into Reg B', 'operands': 'Addr'},
             '0011': {'name': 'STORE_A', 'description': 'Store value from Reg A to RAM[Addr]', 'operands': 'Addr'},
             '0100': {'name': 'STORE_B', 'description': 'Store value from Reg B to RAM[Addr]', 'operands': 'Addr'},
-            '0101': {'name': 'ADD', 'description': 'Reg A = Reg A + Reg B', 'operands': 'None'},
-            '0110': {'name': 'SUB', 'description': 'Reg A = Reg A - Reg B', 'operands': 'None'},
+            '0101': {'name': 'ADD', 'description': 'Reg A = Reg A + Reg B', 'operands': 'Regs'},  # Đã sửa ở đây
+            '0110': {'name': 'SUB', 'description': 'Reg A = Reg A - Reg B', 'operands': 'Regs'},  # Đã sửa ở đây
             '0111': {'name': 'JUMP', 'description': 'Jump to instruction at RAM[Addr]', 'operands': 'Addr'},
             '1000': {'name': 'JUMP_NEG', 'description': 'Jump to RAM[Addr] if N flag is set', 'operands': 'Addr'},
             '1001': {'name': 'JUMP_ZERO', 'description': 'Jump to RAM[Addr] if Z flag is set', 'operands': 'Addr'},
@@ -55,12 +55,36 @@ class CPU:
             self.ram[address] = data_str
         else:
             print(f"Error: Invalid RAM address while writing: {address}")
-
-    def load_ram(self, address, full_instruction_str):
+            
+    def load_instruction(self, address, full_instruction_str):
         """
         Nạp một lệnh 8-bit (chuỗi nhị phân) vào RAM.
-        Sửa tên hàm cho nhất quán.
+        Hàm này dùng để tải các lệnh và in ra thông báo phù hợp.
         """
+        # Ghi chuỗi bit vào RAM
+        self.write_ram(address, full_instruction_str)
+        
+        # Giải mã chuỗi bit để in ra thông tin mô tả
+        opcode_str = full_instruction_str[:4]
+        operand_str = full_instruction_str[4:]
+        op_info = self.opcode_map.get(opcode_str, {'name': 'UNKNOWN', 'operands': 'None'})
+
+        # Tùy thuộc vào loại toán hạng, hiển thị output khác nhau
+        operand_display = ''
+        if op_info['operands'] == 'Addr':
+            operand_display = f" {int(operand_str, 2)}"
+        elif op_info['operands'] == 'Regs':
+            operand_display = " RegA, RegB"
+        else: # Dành cho các lệnh không có toán hạng như NOP, HALT
+            operand_display = ''
+        
+        print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']}{operand_display})")
+
+    """def load_ram(self, address, full_instruction_str):
+        
+        Nạp một lệnh 8-bit (chuỗi nhị phân) vào RAM.
+        Sửa tên hàm cho nhất quán.
+        
         self.write_ram(address, full_instruction_str)
         opcode_str = full_instruction_str[:4]
         operand_str = full_instruction_str[4:]
@@ -72,7 +96,7 @@ class CPU:
         elif op_info['operands'] == 'Regs':
             operand_display = " RegA, RegB"
     
-        print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']}{operand_display})")
+        print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']}{operand_display})")"""
 
     def _update_flags(self, result):
         """
@@ -123,11 +147,9 @@ class CPU:
             operand_value = int(operand_str, 2)
             operand_display = operand_value
         elif instruction_info['operands'] == 'Regs':
-            # Với ADD, SUB, 4 bit cuối có thể là các thanh ghi
-            # Ví dụ: b[0]b[1] cho Reg A, b[2]b[3] cho Reg B
-            # Tuy nhiên, trong mô hình này, chúng ta giả định nó là ADD A, B
+            # Hiển thị rõ ràng các thanh ghi được sử dụng
             operand_display = f"RegA, RegB"
-            # Lưu ý: nếu cần, bạn có thể giải mã chi tiết hơn ở đây
+            
         print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_display})")
 
         self.last_decoded_instruction = {
