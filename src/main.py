@@ -1,24 +1,29 @@
 import sys
 
+# Import từ PyQt6.QtWidgets
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,
-    QGraphicsScene, QComboBox, QLineEdit, QFormLayout, QMessageBox, QGraphicsRectItem,
-    QGroupBox, QGraphicsPathItem, QGraphicsProxyWidget, QScrollArea,
-    QTabWidget, QTextEdit # <-- Đã thêm các lớp này vào PyQt6.QtWidgets
+    QGraphicsScene, QComboBox, QLineEdit, QFormLayout, QMessageBox,
+    QGraphicsRectItem, QGroupBox, QGraphicsPathItem, QGraphicsProxyWidget,
+    QScrollArea, QTabWidget, QTextEdit
 )
+
+# Import từ PyQt6.QtGui
 from PyQt6.QtGui import (
-    QPixmap, QColor, QPen, QFont, QBrush, QTransform, QResizeEvent, QPainterPath
+    QPixmap, QColor, QPen, QFont, QBrush, QTransform, QResizeEvent,
+    QPainterPath
 )
+
+# Import từ PyQt6.QtCore
 from PyQt6.QtCore import (
     Qt, QTimer, QPointF, QRectF, QPropertyAnimation, QSequentialAnimationGroup,
-    QObject, pyqtSignal, QCoreApplication # <-- Đã thêm các lớp này vào PyQt6.QtCore
+    QObject, pyqtSignal, QCoreApplication, QSize # Thêm QSize
 )
 
 # Import các file của bạn từ cùng một gói (package)
 from .cpu_core import CPU
 from .gui_elements import SignalAnimator
-
 # Định nghĩa TỌA ĐỘ đã cập nhật cho các thành phần trên sơ đồ
 # Các tọa độ này đã được điều chỉnh để khớp với hình ảnh
 DIAGRAM_COORDS_ORIGINAL = {
@@ -38,19 +43,19 @@ DIAGRAM_COORDS_ORIGINAL = {
     'RAM_TABLE_POS': QPointF(695, 67),
     
     # Tọa độ khung highlight (Rect)
-    'IAR_RECT': QRectF(460, 100, 120, 60),
-    'IR_RECT': QRectF(610, 210, 160, 80),
-    'REG_A_RECT': QRectF(150, 220, 140, 50),
-    'REG_B_RECT': QRectF(320, 220, 140, 50),
-    'ALU_RECT': QRectF(190, 360, 220, 100),
-    'CONTROL_UNIT_RECT': QRectF(500, 320, 150, 100),
+    'IAR_RECT': QRectF(427, 400, 105, 30),
+    'IR_RECT': QRectF(425, 320, 115, 37),
+    'REG_A_RECT': QRectF(32, 108, 112, 44),
+    'REG_B_RECT': QRectF(189, 108, 112, 44),
+    'ALU_RECT': QRectF(70, 370, 90, 60),
+    'CONTROL_UNIT_RECT': QRectF(292, 280, 265, 200),
 }
 SIGNAL_PATHS_ORIGINAL = {
-    'IAR_TO_RAM_ADDR_BUS': [QPointF(430, 400), QPointF(530, 50), QPointF(800, 50), QPointF(695, 67)],
-    'RAM_DATA_TO_IR': [QPointF(695, 67), QPointF(700, 250), QPointF(700, 220), QPointF(500, 330)],
-    'IR_TO_CONTROL_UNIT': [QPointF(500, 330), QPointF(690, 350), QPointF(500, 330)],
-    'RAM_DATA_TO_REG_A': [QPointF(695, 67), QPointF(450, 250), QPointF(450, 240),  QPointF(50, 120)],
-    'RAM_DATA_TO_REG_B': [QPointF(695, 67), QPointF(450, 250), QPointF(450, 240), QPointF(200, 120)],
+    'IAR_TO_RAM_ADDR_BUS': [QPointF(430, 450), QPointF(695, 450)],
+    'RAM_DATA_TO_IR': [QPointF(695, 400),  QPointF(430, 400)],
+    'IR_TO_CONTROL_UNIT': [QPointF(430, 330), QPointF(500, 330)],
+    'RAM_DATA_TO_REG_A': [QPointF(695, 37), QPointF(70,37), QPointF(70, 120)],
+    'RAM_DATA_TO_REG_B': [QPointF(695, 37), QPointF(220, 37),  QPointF(230, 120)],
     'REG_A_TO_RAM_DATA_BUS': [QPointF(50, 120), QPointF(450, 240), QPointF(450, 250), QPointF(695, 67)],
     'REG_B_TO_RAM_DATA_BUS': [ QPointF(200, 120), QPointF(450, 240), QPointF(450, 250), QPointF(695, 67)],
     'REG_A_TO_ALU': [QPointF(50, 120),  QPointF(400, 330)],
@@ -148,9 +153,6 @@ class CPUVisualizerApp(QMainWindow):
         self.instr_loader_layout = QVBoxLayout(self.instr_loader_group_box)
         self.instr_loader_form = QFormLayout()
         
-        # Bỏ dòng setFixed Height để tối ưu hóa không gian
-        # self.instr_loader_group_box.setFixedHeight(130)
-
         self.instr_address_input = QLineEdit("0")
         self.instr_address_input.setPlaceholderText("0-15")
         self.instr_address_input.setFixedWidth(50)
@@ -163,17 +165,15 @@ class CPUVisualizerApp(QMainWindow):
 
         self.data_for_instr_input = QLineEdit("0")
         self.data_for_instr_input.setPlaceholderText("4-bit value (0-15)")
-        self.data_for_instr_input.setFixedWidth(80)
+        self.data_for_instr_input.setFixedWidth(60)
 
         self.load_instr_button = QPushButton("Load")
         self.load_instr_button.clicked.connect(self.load_instruction_gui)
 
-        # Thiết lập khoảng cách giữa các widget và nút Load
         self.instr_loader_form.addRow(QLabel("Address:"), self.instr_address_input)
         self.instr_loader_form.addRow(QLabel("Opcode:"), self.opcode_combo)
         self.instr_loader_form.addRow(QLabel("Operand/Addr:"), self.data_for_instr_input)
         
-        # Sử dụng QHBoxLayout để đặt nút Load ngay dưới form, giảm khoảng trống
         load_instr_button_layout = QHBoxLayout()
         load_instr_button_layout.addStretch()
         load_instr_button_layout.addWidget(self.load_instr_button)
@@ -182,23 +182,19 @@ class CPUVisualizerApp(QMainWindow):
         self.instr_loader_layout.addLayout(self.instr_loader_form)
         self.instr_loader_layout.addLayout(load_instr_button_layout)
         
-        # Sắp xếp các block Load theo chiều dọc
         self.left_panel_layout.addWidget(self.instr_loader_group_box)
 
         self.data_loader_group_box = QGroupBox("Load Data")
         self.data_loader_layout = QVBoxLayout(self.data_loader_group_box)
         self.data_loader_form = QFormLayout()
         
-        # Bỏ dòng setFixed Height
-        # self.data_loader_group_box.setFixedHeight(130)
-        
         self.data_address_input = QLineEdit("0")
         self.data_address_input.setPlaceholderText("0-15")
-        self.data_address_input.setFixedWidth(50)
+        self.data_address_input.setFixedWidth(60)
         
         self.data_value_input = QLineEdit("0")
         self.data_value_input.setPlaceholderText("0-255")
-        self.data_value_input.setFixedWidth(80)
+        self.data_value_input.setFixedWidth(60)
         
         self.load_data_button = QPushButton("Load")
         self.load_data_button.clicked.connect(self.load_data_gui)
@@ -206,7 +202,6 @@ class CPUVisualizerApp(QMainWindow):
         self.data_loader_form.addRow(QLabel("Address:"), self.data_address_input)
         self.data_loader_form.addRow(QLabel("Value (Dec):"), self.data_value_input)
         
-        # Sử dụng QHBoxLayout để đặt nút Load ngay dưới form, giảm khoảng trống
         load_data_button_layout = QHBoxLayout()
         load_data_button_layout.addStretch()
         load_data_button_layout.addWidget(self.load_data_button)
@@ -225,15 +220,14 @@ class CPUVisualizerApp(QMainWindow):
 
         self.setup_register_and_flag_display(self.reg_layout, self.flags_layout)
         
-        # Thêm các groupbox vào bố cục chính của panel trái theo chiều dọc
         self.left_panel_layout.addWidget(self.reg_group_box)
         self.left_panel_layout.addWidget(self.flags_group_box)
         
-        # Thêm một khoảng giãn ở dưới cùng để đẩy các widget lên trên
         self.left_panel_layout.addStretch(1)
         
         # 2. Cột giữa: Sơ đồ CPU
         self.diagram_layout = QVBoxLayout()
+        # Giảm chiều rộng của cột sơ đồ CPU
         self.main_layout.addLayout(self.diagram_layout, 4)
 
         # Các nút điều khiển
@@ -241,6 +235,12 @@ class CPUVisualizerApp(QMainWindow):
         self.run_button = QPushButton("Run")
         self.step_button = QPushButton("Step")
         self.reset_button = QPushButton("Reset")
+        
+        # Điều chỉnh chiều cao của các nút điều khiển
+        button_height = 35
+        self.run_button.setFixedSize(QSize(70, button_height))
+        self.step_button.setFixedSize(QSize(70, button_height))
+        self.reset_button.setFixedSize(QSize(70, button_height))
         
         self.run_button.clicked.connect(self.run_cpu)
         self.step_button.clicked.connect(self.step_cpu)
@@ -290,7 +290,7 @@ class CPUVisualizerApp(QMainWindow):
 
         # 3. Cột phải: Tab Widget
         self.right_panel_layout = QVBoxLayout()
-        # Giảm chiều rộng của cột bên phải
+        # Giảm chiều rộng của cột bên phải bằng cách giảm stretch factor
         self.main_layout.addLayout(self.right_panel_layout, 2)
         
         self.tab_widget = QTabWidget()
@@ -301,15 +301,24 @@ class CPUVisualizerApp(QMainWindow):
         self.terminal_layout = QVBoxLayout(self.terminal_tab)
         self.terminal_output = QTextEdit()
         self.terminal_output.setReadOnly(True)
-        
-        # Thiết lập màu nền và màu chữ
         self.terminal_output.setStyleSheet("background-color: black; color: #00FF00;")
         
         self.terminal_layout.addWidget(self.terminal_output)
+        
+        # Thêm các button chức năng cho terminal
+        self.terminal_buttons_layout = QHBoxLayout()
+        self.clear_terminal_button = QPushButton("Clear Terminal")
+        self.clear_terminal_button.clicked.connect(self.terminal_output.clear)
+        
+        self.terminal_buttons_layout.addStretch()
+        self.terminal_buttons_layout.addWidget(self.clear_terminal_button)
+        self.terminal_buttons_layout.addStretch()
+        
+        self.terminal_layout.addLayout(self.terminal_buttons_layout)
+        
         self.tab_widget.addTab(self.terminal_tab, "Output Terminal")
         
         # Chuyển hướng stdout
-        # Đảm bảo đã import EmittingStream và các lớp liên quan
         sys.stdout = EmittingStream()
         sys.stdout.textWritten.connect(self.terminal_output.insertPlainText)
         
@@ -422,8 +431,6 @@ class CPUVisualizerApp(QMainWindow):
                 </ul>
             </li>
         </ul>
-
-
         """
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
@@ -439,7 +446,7 @@ class CPUVisualizerApp(QMainWindow):
 
         # Gọi hàm xử lý thay đổi opcode lần đầu tiên
         self._handle_opcode_change(0)
-        
+            
     def _handle_opcode_change(self, index):
         opcode_bits = self.opcode_combo.currentData()
         opcode_info = self.cpu.opcode_map[opcode_bits]
@@ -719,18 +726,25 @@ class CPUVisualizerApp(QMainWindow):
             self.step_button.setEnabled(True)
             self.run_button.setEnabled(True)
             self._run_next_phase_after_delay()
-
+            
+    def _run_next_phase_after_delay(self, delay=300):
+        QTimer.singleShot(delay, self._advance_cpu_phase)
+    
+    
     def run_cpu(self):
         if self.cpu.is_halted:
             QMessageBox.information(self, "CPU Halted", "CPU is in a halted state. Please press 'Reset' to restart.")
             return
 
         if self.is_running_mode:
+            # Nếu đang ở chế độ chạy, bấm nút để tạm dừng
             self.is_running_mode = False
             self.run_button.setText("Run")
         else:
+            # Nếu đang tạm dừng, bấm nút để chạy
             self.is_running_mode = True
             self.run_button.setText("Pause")
+            self.step_button.setEnabled(False) # Vô hiệu hóa nút Step khi chạy
             self._advance_cpu_phase()
 
     def step_cpu(self):
@@ -739,11 +753,13 @@ class CPUVisualizerApp(QMainWindow):
             self.cpu_current_phase = 'IDLE'
             return
         
+        # Chế độ Step luôn là một lần chạy duy nhất
         self.is_running_mode = False
+        self.run_button.setText("Run") # Đảm bảo nút Run trở lại trạng thái ban đầu
         self.step_button.setEnabled(False)
         self.run_button.setEnabled(False)
         self._advance_cpu_phase()
-
+    
     def _advance_cpu_phase(self):
         # Sửa: Thêm kiểm tra trạng thái animation để tránh chồng chéo
         if self.is_animating:
@@ -864,31 +880,33 @@ class CPUVisualizerApp(QMainWindow):
             self.update_gui_cpu_status()
             self.highlight_component('RAM_TABLE_POS', Qt.GlobalColor.blue)
             self.is_animating = True
-            # Không có animation bus từ register to RAM data bus. Animation đã được xử lý ở bước trước.
-            # Ta chỉ cần chờ và tiến tới bước tiếp theo
+            self.signal_animator.start_animation()
             self.cpu_current_phase = 'INCREMENT_IAR'
-            self._run_next_phase_after_delay(self.animation_step_duration)
-
+            
         elif self.cpu_current_phase == 'JUMP_DONE':
             self.cpu.execute_instruction()
             self.update_gui_cpu_status()
             self.highlight_component('IAR', Qt.GlobalColor.blue)
             self.is_animating = True
-            # Animation đã xử lý ở bước trước
+            self.signal_animator.start_animation()
             self.cpu_current_phase = 'IDLE'
-            self._run_next_phase_after_delay(self.animation_step_duration)
 
         elif self.cpu_current_phase == 'INCREMENT_IAR':
-            # Đối với các lệnh nhảy, IAR đã được cập nhật. Cần kiểm tra để tránh tăng 2 lần
             op_name = self.cpu.last_decoded_instruction['name']
             if op_name not in ['JUMP', 'JUMP_NEG', 'JUMP_ZERO', 'HALT']:
                 self.cpu.increment_iar()
             
             self.update_gui_cpu_status()
             self.highlight_component('IAR', Qt.GlobalColor.yellow)
-            self._run_next_phase_after_delay()
             self.cpu_current_phase = 'IDLE'
-
+            
+            # Cần một cơ chế để gọi lại _advance_cpu_phase nếu ở chế độ Run
+            if self.is_running_mode:
+                self._run_next_phase_after_delay()
+            else:
+                self.run_button.setEnabled(True)
+                self.step_button.setEnabled(True)
+    
     def reset_cpu(self):
         self._clear_all_highlights_and_animations()
         self.cpu.reset()
@@ -900,6 +918,7 @@ class CPUVisualizerApp(QMainWindow):
         self.update_gui_cpu_status()
         self.ram_group_box.setStyleSheet("")
         QMessageBox.information(self, "Reset", "CPU has been reset.")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
