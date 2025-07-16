@@ -761,10 +761,12 @@ class CPUVisualizerApp(QMainWindow):
         self._advance_cpu_phase()
     
     def _advance_cpu_phase(self):
-        # Sửa: Thêm kiểm tra trạng thái animation để tránh chồng chéo
+        # Kiểm tra trạng thái animation để tránh chồng chéo
         if self.is_animating:
+            print("Animation in progress, waiting...")
             return
 
+        # Kiểm tra trạng thái HALT
         if self.cpu.is_halted:
             self.run_button.setEnabled(True)
             self.step_button.setEnabled(True)
@@ -775,21 +777,25 @@ class CPUVisualizerApp(QMainWindow):
         
         self._clear_all_highlights_and_animations()
 
-        # Vòng lặp chính của chu kỳ máy
+        print(f"Current Phase: {self.cpu_current_phase}")
+
         if self.cpu_current_phase == 'IDLE':
             self.cpu_current_phase = 'FETCH'
-            self._advance_cpu_phase()
-            return
+            self._run_next_phase_after_delay()
             
         elif self.cpu_current_phase == 'FETCH':
+            # 1. Fetch: Lấy lệnh từ RAM vào IR
+            self.cpu.fetch_instruction()
+            self.update_gui_cpu_status()
             self.highlight_component('IAR', Qt.GlobalColor.red)
             self._animate_signal('IAR_TO_RAM_ADDR_BUS', Qt.GlobalColor.red)
             self.is_animating = True
             self.signal_animator.start_animation()
             self.cpu_current_phase = 'DECODE'
-        
+
         elif self.cpu_current_phase == 'DECODE':
-            self.cpu.fetch_instruction()
+            # 2. Decode: Giải mã lệnh trong IR
+            self.cpu.decode_instruction()
             self.update_gui_cpu_status()
             self.highlight_component('IR', Qt.GlobalColor.green)
             self._animate_signal('RAM_DATA_TO_IR', Qt.GlobalColor.green)
@@ -798,12 +804,13 @@ class CPUVisualizerApp(QMainWindow):
             self.cpu_current_phase = 'EXECUTE'
 
         elif self.cpu_current_phase == 'EXECUTE':
-            self.cpu.decode_instruction()
-            self.update_gui_cpu_status()
-            self.highlight_component('CONTROL_UNIT', Qt.GlobalColor.blue)
-            
+            # 3. Execute: Thực thi lệnh
             decoded_instruction = self.cpu.last_decoded_instruction
             op_name = decoded_instruction['name']
+            
+            # SỬA CHỮA LỖI NÀY: Thực thi lệnh ngay lập tức, trước khi chuyển pha
+            self.cpu.execute_instruction()
+            self.update_gui_cpu_status()
             
             if op_name in ['ADD', 'SUB']:
                 self.highlight_component('A', Qt.GlobalColor.green)
@@ -813,78 +820,70 @@ class CPUVisualizerApp(QMainWindow):
                 self._animate_signal('REG_B_TO_ALU', Qt.GlobalColor.darkCyan)
                 self.is_animating = True
                 self.signal_animator.start_animation()
-                self.cpu_current_phase = 'EXECUTE_ALU_DONE'
-            
-            elif op_name in ['LOAD_A', 'LOAD_B']:
+                self.cpu_current_phase = 'EXECUTE_ALU_WRITEBACK'
+
+            elif op_name in ['LOAD_A', 'LOAD_B', 'STORE_A', 'STORE_B']:
                 self.highlight_component('IR', Qt.GlobalColor.green)
                 self.highlight_component('RAM_TABLE_POS', Qt.GlobalColor.red)
-                self._animate_signal('IAR_TO_RAM_ADDR_BUS', Qt.GlobalColor.red)
+                # Animation từ IAR_TO_RAM_ADDR_BUS đã diễn ra ở FETCH
+                # Animate đường data từ/đến RAM
+                if op_name in ['LOAD_A', 'LOAD_B']:
+                    self._animate_signal('RAM_DATA_TO_REG_A' if op_name == 'LOAD_A' else 'RAM_DATA_TO_REG_B', Qt.GlobalColor.blue)
+                else: # STORE
+                    self._animate_signal('REG_A_TO_RAM_DATA_BUS' if op_name == 'STORE_A' else 'REG_B_TO_RAM_DATA_BUS', Qt.GlobalColor.blue)
+                
                 self.is_animating = True
                 self.signal_animator.start_animation()
-                self.cpu_current_phase = 'LOAD_DATA_FROM_RAM'
-                
-            elif op_name in ['STORE_A', 'STORE_B']:
-                self.highlight_component('IR', Qt.GlobalColor.green)
-                self.highlight_component('A' if op_name == 'STORE_A' else 'B', Qt.GlobalColor.blue)
-                self._animate_signal('REG_A_TO_RAM_DATA_BUS' if op_name == 'STORE_A' else 'REG_B_TO_RAM_DATA_BUS', Qt.GlobalColor.blue)
-                self.is_animating = True
-                self.signal_animator.start_animation()
-                self.cpu_current_phase = 'STORE_DATA_TO_RAM'
-                
-            elif op_name in ['JUMP', 'JUMP_NEG', 'JUMP_ZERO']:
+                self.cpu_current_phase = 'INCREMENT_IAR' # Chuyển thẳng đến INCREMENT_IAR
+
+            elif op_name == 'JUMP':
                 self.highlight_component('IR', Qt.GlobalColor.yellow)
                 self._animate_signal('ADDR_TO_IAR_JUMP', Qt.GlobalColor.red)
                 self.is_animating = True
                 self.signal_animator.start_animation()
                 self.cpu_current_phase = 'JUMP_DONE'
-                
+
+            elif op_name in ['JUMP_NEG', 'JUMP_ZERO']:
+                # SỬA CHỮA LỖI NÀY: Kiểm tra điều kiện JUMP sau khi lệnh đã được thực thi
+                # (Lệnh execute_instruction() đã thay đổi IAR nếu điều kiện thỏa mãn)
+                self.highlight_component('IR', Qt.GlobalColor.yellow)
+                if (op_name == 'JUMP_NEG' and self.cpu.flags['N']) or \
+                   (op_name == 'JUMP_ZERO' and self.cpu.flags['Z']):
+                    # Nếu JUMP thành công, thực hiện animation và chuyển pha
+                    print(f"JUMP_NEG/ZERO: Condition met, jumping to {self.cpu.registers['IAR']}")
+                    self._animate_signal('ADDR_TO_IAR_JUMP', Qt.GlobalColor.red)
+                    self.is_animating = True
+                    self.signal_animator.start_animation()
+                    self.cpu_current_phase = 'JUMP_DONE'
+                else:
+                    # Nếu JUMP không thành công, không có animation JUMP, chuyển thẳng đến INCREMENT_IAR
+                    print(f"JUMP_NEG/ZERO: Condition not met, proceeding to next instruction.")
+                    self.cpu_current_phase = 'INCREMENT_IAR'
+                    self._run_next_phase_after_delay() # Gọi ngay pha tiếp theo vì không có animation cần đợi
+
             elif op_name == 'HALT':
-                self.cpu.execute_instruction()
-                self.update_gui_cpu_status()
                 self.highlight_component('CONTROL_UNIT', Qt.GlobalColor.red)
-                self.cpu.is_halted = True
-                self.cpu_current_phase = 'HALT'
+                self.is_running_mode = False
                 self.run_button.setEnabled(True)
                 self.step_button.setEnabled(True)
-                self.is_running_mode = False
+                self.cpu_current_phase = 'IDLE'
                 QMessageBox.information(self, "CPU Halted", "CPU has stopped. Please press 'Reset' to restart.")
                 return
 
-            else:
-                # Đối với các lệnh không cần animation phức tạp
+            else: # NOP, hoặc các lệnh không cần animation đặc biệt
                 self.cpu_current_phase = 'INCREMENT_IAR'
-                self._advance_cpu_phase()
-            
-        elif self.cpu_current_phase == 'EXECUTE_ALU_DONE':
-            self.cpu.execute_instruction()
-            self.update_gui_cpu_status()
+                self._run_next_phase_after_delay()
+
+        elif self.cpu_current_phase == 'EXECUTE_ALU_WRITEBACK':
+            # Pha này chỉ để xử lý animation từ ALU về Reg A
             self.highlight_component('A', Qt.GlobalColor.blue)
             self._animate_signal('ALU_TO_REG_A', Qt.GlobalColor.blue)
             self.is_animating = True
             self.signal_animator.start_animation()
             self.cpu_current_phase = 'INCREMENT_IAR'
 
-        elif self.cpu_current_phase == 'LOAD_DATA_FROM_RAM':
-            op_name = self.cpu.last_decoded_instruction['name']
-            self.cpu.execute_instruction()
-            self.update_gui_cpu_status()
-            self.highlight_component('A' if op_name == 'LOAD_A' else 'B', Qt.GlobalColor.blue)
-            self._animate_signal('RAM_DATA_TO_REG_A' if op_name == 'LOAD_A' else 'RAM_DATA_TO_REG_B', Qt.GlobalColor.blue)
-            self.is_animating = True
-            self.signal_animator.start_animation()
-            self.cpu_current_phase = 'INCREMENT_IAR'
-            
-        elif self.cpu_current_phase == 'STORE_DATA_TO_RAM':
-            op_name = self.cpu.last_decoded_instruction['name']
-            self.cpu.execute_instruction()
-            self.update_gui_cpu_status()
-            self.highlight_component('RAM_TABLE_POS', Qt.GlobalColor.blue)
-            self.is_animating = True
-            self.signal_animator.start_animation()
-            self.cpu_current_phase = 'INCREMENT_IAR'
-            
+        # SỬA CHỮA LỖI NÀY: Pha JUMP_DONE không cần thực thi lại lệnh
         elif self.cpu_current_phase == 'JUMP_DONE':
-            self.cpu.execute_instruction()
             self.update_gui_cpu_status()
             self.highlight_component('IAR', Qt.GlobalColor.blue)
             self.is_animating = True
@@ -892,20 +891,21 @@ class CPUVisualizerApp(QMainWindow):
             self.cpu_current_phase = 'IDLE'
 
         elif self.cpu_current_phase == 'INCREMENT_IAR':
+            # Tăng IAR nếu cần
             op_name = self.cpu.last_decoded_instruction['name']
-            if op_name not in ['JUMP', 'JUMP_NEG', 'JUMP_ZERO', 'HALT']:
+            
+            # SỬA CHỮA LỖI NÀY: Kiểm tra điều kiện chính xác để tăng IAR
+            # Chỉ tăng IAR nếu IAR chưa bị thay đổi bởi lệnh JUMP thành công
+            if not (op_name == 'JUMP' or \
+                    (op_name == 'JUMP_NEG' and self.cpu.flags['N']) or \
+                    (op_name == 'JUMP_ZERO' and self.cpu.flags['Z'])):
                 self.cpu.increment_iar()
             
             self.update_gui_cpu_status()
             self.highlight_component('IAR', Qt.GlobalColor.yellow)
+            self.is_animating = True
+            self.signal_animator.start_animation()
             self.cpu_current_phase = 'IDLE'
-            
-            # Cần một cơ chế để gọi lại _advance_cpu_phase nếu ở chế độ Run
-            if self.is_running_mode:
-                self._run_next_phase_after_delay()
-            else:
-                self.run_button.setEnabled(True)
-                self.step_button.setEnabled(True)
     
     def reset_cpu(self):
         self._clear_all_highlights_and_animations()
