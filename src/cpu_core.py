@@ -18,7 +18,7 @@ class CPU:
         self.flags = {
             'O': False,  # Overflow Flag
             'Z': False,  # Zero Flag
-            'N': False  # Negative Flag
+            'N': False   # Negative Flag
         }
 
         # Bảng mã lệnh (Opcode definitions)
@@ -28,8 +28,8 @@ class CPU:
             '0010': {'name': 'LOAD_B', 'description': 'Load value from RAM[Addr] into Reg B', 'operands': 'Addr'},
             '0011': {'name': 'STORE_A', 'description': 'Store value from Reg A to RAM[Addr]', 'operands': 'Addr'},
             '0100': {'name': 'STORE_B', 'description': 'Store value from Reg B to RAM[Addr]', 'operands': 'Addr'},
-            '0101': {'name': 'ADD', 'description': 'Reg A = Reg A + Reg B', 'operands': 'Regs'},  # Đã sửa ở đây
-            '0110': {'name': 'SUB', 'description': 'Reg A = Reg A - Reg B', 'operands': 'Regs'},  # Đã sửa ở đây
+            '0101': {'name': 'ADD', 'description': 'Reg A = Reg A + Reg B', 'operands': 'Regs'},
+            '0110': {'name': 'SUB', 'description': 'Reg A = Reg A - Reg B', 'operands': 'Regs'},
             '0111': {'name': 'JUMP', 'description': 'Jump to instruction at RAM[Addr]', 'operands': 'Addr'},
             '1000': {'name': 'JUMP_NEG', 'description': 'Jump to RAM[Addr] if N flag is set', 'operands': 'Addr'},
             '1001': {'name': 'JUMP_ZERO', 'description': 'Jump to RAM[Addr] if Z flag is set', 'operands': 'Addr'},
@@ -59,60 +59,46 @@ class CPU:
     def load_instruction(self, address, full_instruction_str):
         """
         Nạp một lệnh 8-bit (chuỗi nhị phân) vào RAM.
-        Hàm này dùng để tải các lệnh và in ra thông báo phù hợp.
         """
-        # Ghi chuỗi bit vào RAM
         self.write_ram(address, full_instruction_str)
         
-        # Giải mã chuỗi bit để in ra thông tin mô tả
         opcode_str = full_instruction_str[:4]
         operand_str = full_instruction_str[4:]
         op_info = self.opcode_map.get(opcode_str, {'name': 'UNKNOWN', 'operands': 'None'})
 
-        # Tùy thuộc vào loại toán hạng, hiển thị output khác nhau
         operand_display = ''
         if op_info['operands'] == 'Addr':
             operand_display = f" {int(operand_str, 2)}"
         elif op_info['operands'] == 'Regs':
             operand_display = " RegA, RegB"
-        else: # Dành cho các lệnh không có toán hạng như NOP, HALT
+        else:
             operand_display = ''
         
         print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']}{operand_display})")
 
-    """def load_ram(self, address, full_instruction_str):
-        
-        Nạp một lệnh 8-bit (chuỗi nhị phân) vào RAM.
-        Sửa tên hàm cho nhất quán.
-        
-        self.write_ram(address, full_instruction_str)
-        opcode_str = full_instruction_str[:4]
-        operand_str = full_instruction_str[4:]
-        op_info = self.opcode_map.get(opcode_str, {'name': 'UNKNOWN'})
-        
-        operand_display = ''
-        if op_info['operands'] == 'Addr':
-            operand_display = f" {int(operand_str, 2)}"
-        elif op_info['operands'] == 'Regs':
-            operand_display = " RegA, RegB"
-    
-        print(f"Load instruction: RAM[{address}] = {full_instruction_str} ({op_info['name']}{operand_display})")"""
-
-    def _update_flags(self, result):
+    def _update_flags_ZN(self, result):
         """
-        Cập nhật các cờ trạng thái (Z, N) dựa trên giá trị kết quả.
-        Cờ O được xử lý riêng trong các phép toán.
+        Cập nhật cờ Zero (Z) và Negative (N) dựa trên kết quả của phép toán.
+        Lưu ý: Cờ Overflow (O) phải được xử lý riêng trong các phép toán.
         """
         # Cờ Zero (Z): Bật nếu kết quả bằng 0
         self.flags['Z'] = (result == 0)
 
         # Cờ Negative (N): Bật nếu bit cao nhất (bit thứ 7) của kết quả là 1.
+        # Sử dụng & 0x80 (nhị phân 10000000) để kiểm tra bit thứ 7.
         self.flags['N'] = (result & 0x80) != 0
+        print(f"Flags Z: {self.flags['Z']}, N: {self.flags['N']}")
+
+
+    def _to_signed_8bit(self, value):
+        """Chuyển đổi giá trị không dấu 8-bit (0-255) sang có dấu (-128 đến 127)."""
+        if value > 127:
+            return value - 256
+        return value
 
     def fetch_instruction(self):
         """
         Pha Fetch: Nạp lệnh từ RAM vào thanh ghi lệnh (IR).
-        Cập nhật IAR (Program Counter).
         """
         if self.is_halted:
             return None
@@ -147,8 +133,7 @@ class CPU:
             operand_value = int(operand_str, 2)
             operand_display = operand_value
         elif instruction_info['operands'] == 'Regs':
-            # Hiển thị rõ ràng các thanh ghi được sử dụng
-            operand_display = f"RegA, RegB"
+            operand_display = "RegA, RegB"
             
         print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_display})")
 
@@ -159,20 +144,7 @@ class CPU:
             'operand_val': operand_value
         }
         return self.last_decoded_instruction
-
             
-        """# Đã cập nhật để in ra thông tin chi tiết
-        operand_display = operand_value if operand_value is not None else 'N/A'
-        print(f"Decode: Opcode: {instruction_info['name']} (Operand: {operand_display})")
-
-        self.last_decoded_instruction = {
-            'name': instruction_info['name'],
-            'operands': instruction_info['operands'],
-            'opcode_str': opcode_str,
-            'operand_val': operand_value
-        }
-        return self.last_decoded_instruction"""
-
     def execute_instruction(self):
         """
         Pha Execute: Thực thi lệnh đã giải mã, sử dụng last_decoded_instruction.
@@ -187,76 +159,114 @@ class CPU:
 
         print(f"Execute: {op_name}")
 
+        # Sửa: Trước khi thực hiện lệnh, reset cờ Overflow vì nó chỉ liên quan đến ALU
+        self.flags['O'] = False
+
         if op_name == 'LOAD_A':
             data_from_ram = self.read_ram(operand_val)
             self.registers['A'] = int(data_from_ram, 2)
-            print(f"  Reg A = RAM[{operand_val}] = {self.registers['A']}")
-            self._update_flags(self.registers['A'])
+            print(f"  Reg A = RAM[{operand_val}] = {self.registers['A']}")
+            # Sửa: Không cập nhật cờ sau lệnh LOAD/STORE
+            self._update_flags_ZN(self.registers['A'])
 
         elif op_name == 'LOAD_B':
             data_from_ram = self.read_ram(operand_val)
             self.registers['B'] = int(data_from_ram, 2)
-            print(f"  Reg B = RAM[{operand_val}] = {self.registers['B']}")
-            self._update_flags(self.registers['B'])
+            print(f"  Reg B = RAM[{operand_val}] = {self.registers['B']}")
+            # Sửa: Không cập nhật cờ sau lệnh LOAD/STORE
 
         elif op_name == 'STORE_A':
             data_to_store = f"{self.registers['A']:08b}"
             self.write_ram(operand_val, data_to_store)
-            print(f"  RAM[{operand_val}] = Reg A ({self.registers['A']})")
+            print(f"  RAM[{operand_val}] = Reg A ({self.registers['A']})")
 
         elif op_name == 'STORE_B':
             data_to_store = f"{self.registers['B']:08b}"
             self.write_ram(operand_val, data_to_store)
-            print(f"  RAM[{operand_val}] = Reg B ({self.registers['B']})")
+            print(f"  RAM[{operand_val}] = Reg B ({self.registers['B']})")
 
         elif op_name == 'ADD':
             val_a_before = self.registers['A']
             val_b_before = self.registers['B']
-            
+
+            # Sửa: Thực hiện phép cộng không dấu
             result = val_a_before + val_b_before
-            self.flags['O'] = (result > 255)
+            
+            # Cập nhật cờ Overflow
+            signed_a = self._to_signed_8bit(val_a_before)
+            signed_b = self._to_signed_8bit(val_b_before)
+            
+            # Kiểm tra overflow cho phép cộng có dấu
+            # Cộng hai số dương, kết quả âm
+            if signed_a > 0 and signed_b > 0 and self._to_signed_8bit(result) < 0:
+                self.flags['O'] = True
+            # Cộng hai số âm, kết quả dương
+            elif signed_a < 0 and signed_b < 0 and self._to_signed_8bit(result) > 0:
+                self.flags['O'] = True
+            else:
+                self.flags['O'] = False
+
+            # Cập nhật thanh ghi A với kết quả 8-bit (lấy 8 bit thấp)
             self.registers['A'] = result & 0xFF
             
-            print(f"  Reg A = {val_a_before} + {val_b_before} = {self.registers['A']}")
-            self._update_flags(self.registers['A'])
+            print(f"  Reg A = {val_a_before} + {val_b_before} = {self.registers['A']}")
+            # Sửa: Cập nhật cờ Z và N sau phép toán
+            self._update_flags_ZN(self.registers['A'])
+            print(f"  Flags updated: O={self.flags['O']}")
 
         elif op_name == 'SUB':
-            # Lưu giá trị ban đầu để in ra
             val_a_before = self.registers['A']
             val_b_before = self.registers['B']
 
-            result = self.registers['A'] - self.registers['B']
-            self.flags['O'] = (result < 0 or result > 255)
+            # Sửa: Thực hiện phép trừ không dấu
+            result = val_a_before - val_b_before
+            
+            # Cập nhật cờ Overflow
+            signed_a = self._to_signed_8bit(val_a_before)
+            signed_b = self._to_signed_8bit(val_b_before)
+
+            # Kiểm tra overflow cho phép trừ có dấu
+            # Trừ số dương cho số âm (tương đương cộng 2 số dương), kết quả âm
+            if signed_a > 0 and signed_b < 0 and self._to_signed_8bit(result) < 0:
+                self.flags['O'] = True
+            # Trừ số âm cho số dương (tương đương cộng 2 số âm), kết quả dương
+            elif signed_a < 0 and signed_b > 0 and self._to_signed_8bit(result) > 0:
+                self.flags['O'] = True
+            else:
+                self.flags['O'] = False
+
+            # Cập nhật thanh ghi A với kết quả 8-bit
             self.registers['A'] = result & 0xFF
             
-            # Sửa dòng in tương tự như ADD
-            print(f"  Reg A = {val_a_before} - {val_b_before} = {self.registers['A']}")
-            self._update_flags(self.registers['A'])
+            print(f"  Reg A = {val_a_before} - {val_b_before} = {self.registers['A']}")
+            # Sửa: Cập nhật cờ Z và N sau phép toán
+            self._update_flags_ZN(self.registers['A'])
+            print(f"  Flags updated: O={self.flags['O']}")
 
         elif op_name == 'JUMP':
             self.registers['IAR'] = operand_val
-            print(f"  JUMP to address {operand_val}")
+            print(f"  JUMP to address {operand_val}")
 
         elif op_name == 'JUMP_NEG':
             if self.flags['N']:
                 self.registers['IAR'] = operand_val
-                print(f"  N flag set, JUMP to address {operand_val}")
+                print(f"  N flag set, JUMP to address {operand_val}")
             else:
-                print("  N flag not set, JUMP_NEG skipped.")
+                print("  N flag not set, JUMP_NEG skipped.")
 
         elif op_name == 'JUMP_ZERO':
             if self.flags['Z']:
                 self.registers['IAR'] = operand_val
-                print(f"  Z flag set, JUMP to address {operand_val}")
+                print(f"  Z flag set, JUMP to address {operand_val}")
             else:
-                print("  Z flag not set, JUMP_ZERO skipped.")
+                print("  Z flag not set, JUMP_ZERO skipped.")
 
         elif op_name == 'HALT':
             self.is_halted = True
             print("CPU Halted.")
 
         elif op_name == 'UNKNOWN':
-            print("  Error: Unknown command. Stopping execution.")
+            print("  Error: Unknown command. Stopping execution.")
             self.is_halted = True
             
     def increment_iar(self):
@@ -273,7 +283,7 @@ class CPU:
                 return (self.registers['A'] + self.registers['B']) & 0xFF
             elif op_name == 'SUB':
                 return (self.registers['A'] - self.registers['B']) & 0xFF
-        return 0 # Trả về 0 hoặc giá trị mặc định nếu không phải lệnh ALU
+        return 0
     
     # Hàm reset đã được cập nhật để KHÔNG xóa RAM
     def reset(self):
