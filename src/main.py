@@ -12,13 +12,13 @@ from PyQt6.QtWidgets import (
 # Import từ PyQt6.QtGui
 from PyQt6.QtGui import (
     QPixmap, QColor, QPen, QFont, QBrush, QTransform, QResizeEvent,
-    QPainterPath
+    QPainterPath, QPalette # Thêm QPalette
 )
 
 # Import từ PyQt6.QtCore
 from PyQt6.QtCore import (
     Qt, QTimer, QPointF, QRectF, QPropertyAnimation, QSequentialAnimationGroup,
-    QObject, pyqtSignal, QCoreApplication, QSize # Thêm QSize
+    QObject, pyqtSignal, QCoreApplication, QSize
 )
 
 # Import các file của bạn từ cùng một gói (package)
@@ -431,6 +431,8 @@ class CPUVisualizerApp(QMainWindow):
                 </ul>
             </li>
         </ul>
+
+        
         """
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
@@ -460,7 +462,7 @@ class CPUVisualizerApp(QMainWindow):
             self.data_for_instr_input.setText("0")
             self.data_for_instr_input.setPlaceholderText("Fixed: 0000")
             self.data_for_instr_input.setEnabled(False)
-        else:
+        else: # Bao gồm ADDI và các lệnh khác
             self.data_for_instr_input.setText("0")
             self.data_for_instr_input.setPlaceholderText("4-bit value (0-15)")
             self.data_for_instr_input.setEnabled(True)
@@ -584,7 +586,7 @@ class CPUVisualizerApp(QMainWindow):
         self.diagram_text_items['B'].setPlainText(f"B: {self.cpu.registers['B']:08b}")
         
         # Chỉ cập nhật ALU_OUT khi có ALU ops
-        if self.cpu.last_decoded_instruction and self.cpu.last_decoded_instruction['name'] in ['ADD', 'SUB']:
+        if self.cpu.last_decoded_instruction and self.cpu.last_decoded_instruction['name'] in ['ADD', 'SUB', 'ADDI']: # Cập nhật ở đây
             alu_out_value = self.cpu.calculate_alu_output()
             self.diagram_text_items['ALU_OUT'].setPlainText(f"{alu_out_value}")
         else:
@@ -616,7 +618,7 @@ class CPUVisualizerApp(QMainWindow):
                 operand_bits = "1001"
             elif op_name in ['NOP', 'HALT']:
                 operand_bits = "0000"
-            else:
+            else: # Bao gồm ADDI
                 operand_value_str = self.data_for_instr_input.text().strip()
                 if not operand_value_str.isdigit():
                     QMessageBox.warning(self, "Input error", "Operand/Address must be a decimal number (0-15).")
@@ -657,7 +659,7 @@ class CPUVisualizerApp(QMainWindow):
 
             binary_value = f"{value:08b}"
             
-          
+        
             self.cpu.write_ram(address, binary_value)
             print(f"Loaded data: RAM[{address}] = {binary_value} (Decimal: {value})")
             self.update_gui_cpu_status()
@@ -725,10 +727,7 @@ class CPUVisualizerApp(QMainWindow):
         else:
             self.step_button.setEnabled(True)
             self.run_button.setEnabled(True)
-            self._run_next_phase_after_delay()
-            
-    def _run_next_phase_after_delay(self, delay=300):
-        QTimer.singleShot(delay, self._advance_cpu_phase)
+            # self._run_next_phase_after_delay() 
     
     
     def run_cpu(self):
@@ -808,16 +807,26 @@ class CPUVisualizerApp(QMainWindow):
             decoded_instruction = self.cpu.last_decoded_instruction
             op_name = decoded_instruction['name']
             
-            # SỬA CHỮA LỖI NÀY: Thực thi lệnh ngay lập tức, trước khi chuyển pha
+            # Thực thi lệnh ngay lập tức, trước khi chuyển pha
             self.cpu.execute_instruction()
             self.update_gui_cpu_status()
             
-            if op_name in ['ADD', 'SUB']:
+            # Cập nhật để bao gồm ADDI trong các lệnh ALU
+            if op_name in ['ADD', 'SUB', 'ADDI']: # <-- Dòng này đã được cập nhật
                 self.highlight_component('A', Qt.GlobalColor.green)
-                self.highlight_component('B', Qt.GlobalColor.green)
-                self.highlight_component('ALU', Qt.GlobalColor.magenta)
+                # Với ADDI, không có Reg B được sử dụng như operand thứ hai từ thanh ghi,
+                # nhưng chúng ta vẫn có thể highlight ALU và A
+                # Nếu muốn hiển thị rõ hơn immediate value đến ALU, bạn cần thêm đường tín hiệu
+                # Ví dụ: self.highlight_component('IR_ADDRDATA_VALUE_POS', Qt.GlobalColor.green)
+                # và thêm đường tín hiệu từ IR (Operand/Addr) đến ALU.
                 self._animate_signal('REG_A_TO_ALU', Qt.GlobalColor.darkCyan)
-                self._animate_signal('REG_B_TO_ALU', Qt.GlobalColor.darkCyan)
+                
+                # Thêm highlight cho Reg B nếu là ADD/SUB
+                if op_name in ['ADD', 'SUB']:
+                    self.highlight_component('B', Qt.GlobalColor.green)
+                    self._animate_signal('REG_B_TO_ALU', Qt.GlobalColor.darkCyan)
+                
+                self.highlight_component('ALU', Qt.GlobalColor.magenta)
                 self.is_animating = True
                 self.signal_animator.start_animation()
                 self.cpu_current_phase = 'EXECUTE_ALU_WRITEBACK'
@@ -844,7 +853,7 @@ class CPUVisualizerApp(QMainWindow):
                 self.cpu_current_phase = 'JUMP_DONE'
 
             elif op_name in ['JUMP_NEG', 'JUMP_ZERO']:
-                # SỬA CHỮA LỖI NÀY: Kiểm tra điều kiện JUMP sau khi lệnh đã được thực thi
+                # Kiểm tra điều kiện JUMP sau khi lệnh đã được thực thi
                 # (Lệnh execute_instruction() đã thay đổi IAR nếu điều kiện thỏa mãn)
                 self.highlight_component('IR', Qt.GlobalColor.yellow)
                 if (op_name == 'JUMP_NEG' and self.cpu.flags['N']) or \
@@ -906,22 +915,45 @@ class CPUVisualizerApp(QMainWindow):
             self.is_animating = True
             self.signal_animator.start_animation()
             self.cpu_current_phase = 'IDLE'
-    
+
+
     def reset_cpu(self):
         self._clear_all_highlights_and_animations()
         self.cpu.reset()
+        self.update_gui_cpu_status()
         self.cpu_current_phase = 'IDLE'
         self.is_running_mode = False
         self.run_button.setText("Run")
         self.run_button.setEnabled(True)
         self.step_button.setEnabled(True)
-        self.update_gui_cpu_status()
-        self.ram_group_box.setStyleSheet("")
-        QMessageBox.information(self, "Reset", "CPU has been reset.")
+        print("CPU Reset.")
+        self.terminal_output.clear() # Clear terminal on reset
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app = QApplication(sys.argv)
+    
+    # Thiết lập phong cách ứng dụng
+    app.setStyle("Fusion") # Hoặc "Windows", "Macintosh", "Breeze", "Oxygen", "QtCurve" nếu có
+
+    # Tùy chỉnh bảng màu cho ứng dụng
+    palette = QPalette() # Khởi tạo một đối tượng QPalette
+    # Sửa lỗi: QColor.current() không tồn tại. Sử dụng QColor(Qt.GlobalColor.YourColor) hoặc QColor("colorName").
+    # Sửa lỗi: palette.Window không tồn tại, thay bằng QPalette.ColorRole.Window
+    palette.setColor(QPalette.ColorRole.Window, QColor(Qt.GlobalColor.white)) # Màu nền cửa sổ
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(Qt.GlobalColor.black)) # Màu chữ trên nền cửa sổ
+    palette.setColor(QPalette.ColorRole.Base, QColor(Qt.GlobalColor.white)) # Màu nền cho các widget nhập liệu
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(Qt.GlobalColor.darkGray)) # Màu nền xen kẽ (ví dụ: trong QListView)
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(Qt.GlobalColor.yellow)) # Màu nền tooltip
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(Qt.GlobalColor.black)) # Màu chữ tooltip
+    palette.setColor(QPalette.ColorRole.Text, QColor(Qt.GlobalColor.black)) # Màu chữ chung
+    palette.setColor(QPalette.ColorRole.Button, QColor(Qt.GlobalColor.lightGray)) # Màu nền nút
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(Qt.GlobalColor.black)) # Màu chữ nút
+    palette.setColor(QPalette.ColorRole.BrightText, QColor(Qt.GlobalColor.red)) # Màu chữ sáng (ví dụ: cho cảnh báo)
+    palette.setColor(QPalette.ColorRole.Link, QColor(Qt.GlobalColor.blue)) # Màu link
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(Qt.GlobalColor.cyan)) # Màu highlight khi chọn
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(Qt.GlobalColor.black)) # Màu chữ khi highlight
+    app.setPalette(palette)
+
     window = CPUVisualizerApp()
     window.show()
     sys.exit(app.exec())
