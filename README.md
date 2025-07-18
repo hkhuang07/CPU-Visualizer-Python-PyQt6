@@ -1,6 +1,6 @@
 # CPU Visualizer
 
-[![introduce.gif](assets/introduce.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/introduce.gif)
+[![introduce.gif](assets/intro_app.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/intro_app.gif)
 
 ---
 
