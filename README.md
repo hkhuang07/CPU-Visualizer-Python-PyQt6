@@ -2,14 +2,14 @@
 
 [![introduce.gif](assets/intro_app.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/intro_app.gif)
 <p align="center">
-  <h3>Main Interface</h3>
+  <h3>Main Interface with Instruction Guide Tab</h3>
   <img src="assets/cpu-visualizer-interface01.PNG" alt="Main Application Window" width="700">
   <br>
   <em>The main application interface – where all functionalities are intuitively connected.</em>
 </p>
 
 <p align="center">
-  <h3>Main Interface</h3>
+  <h3>Main Interface with Program Output Tab</h3>
   <img src="assets/cpu-visualizer-interface.PNG" alt="Main Application Window" width="700">
   <br>
   <em>The main application interface - program running subtract operator between 2 register a and register b.</em>
@@ -153,13 +153,13 @@ The project is organized into modular Python files for clarity and maintainabili
 
 ## Author
 
-* **Huynh Quoc Huy** - [GitHub Profile](https://github.com/hkhuang07/)
+* **Huynh Quoc Huy** - [GitHub Profile: https://github.com/hkhuang07/](https://github.com/hkhuang07/)
 
 ---
 
 ## Repository
 
-* You can find the full source code and contribute to this project here: [CPU-Visualizer-Python-PyQt6](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6)
+* You can find the full source code and contribute to this project here: [CPU-Visualizer-Python-PyQt6: https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6)
 
 ---
 
