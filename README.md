@@ -1,6 +1,24 @@
-# CPU Visualizer
+# CPU Visualizer Python - PyQt6
 
 [![introduce.gif](assets/intro_app.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/intro_app.gif)
+
+---
+
+## Examples
+
+### Addition Operation (`ADD`)
+
+This example demonstrates a basic addition. We load two values into Data RAM, transfer them to Register A and Register B, and then execute the `ADD` instruction. Observe the ALU performing the calculation and the result updating Register A, along with the flag changes.
+
+[![add.gif](assets/add.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/add.gif)
+
+### Subtraction Operation (`SUB`)
+
+In this illustration, we perform a subtraction. Values are loaded into Register A and Register B, and the `SUB` instruction is executed. Pay attention to the ALU's activity, the updated value in Register A, and how the Z, N, and O flags reflect the outcome of the subtraction.
+
+[![sub.gif](assets/sub.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/sub.gif)
+
+---
 <p align="center">
   <h3>Main Interface with Instruction Guide Tab</h3>
   <img src="assets/cpu-visualizer-interface01.PNG" alt="Main Application Window" width="700">
@@ -63,22 +81,6 @@ The simulated 8-bit CPU operates with a concise instruction set, where each inst
 | `1001`         | `JUMP_ZERO`      | Conditionally jumps program execution to `Program RAM[Addr]` only if the Zero (Z) flag is currently set. | `Addr` (4-bit) |
 | `1010`         | `ADDI`           | Performs immediate addition: `Register A = Register A + Immediate_Value`. Updates the Zero (Z), Negative (N), and Overflow (O) flags based on the result. The Immediate_Value is derived from the 4-bit operand. | `Data` (4-bit) |
 | `1111`         | `HALT`           | Stops program execution. The CPU enters a halted state.                 | None           |
-
----
-
-## Examples
-
-### Addition Operation (`ADD`)
-
-This example demonstrates a basic addition. We load two values into Data RAM, transfer them to Register A and Register B, and then execute the `ADD` instruction. Observe the ALU performing the calculation and the result updating Register A, along with the flag changes.
-
-[![add.gif](assets/add.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/add.gif)
-
-### Subtraction Operation (`SUB`)
-
-In this illustration, we perform a subtraction. Values are loaded into Register A and Register B, and the `SUB` instruction is executed. Pay attention to the ALU's activity, the updated value in Register A, and how the Z, N, and O flags reflect the outcome of the subtraction.
-
-[![sub.gif](assets/sub.gif)](https://github.com/hkhuang07/CPU-Visualizer-Python-PyQt6/blob/main/assets/sub.gif)
 
 ---
 
